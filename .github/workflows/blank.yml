@@ -1,7 +1,10 @@
-name: Full Tenant Backup - CPI
+name: Full Tenant Backup
 
 on:
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   full_backup:
@@ -14,16 +17,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Backup ALL packages from CPI
-        uses: engswee/flashpipe-action/full-sync@v1
-        with:
-          tmn-host: ${{ secrets.DEV_TMN_HOST }}
-          oauth-host: ${{ secrets.DEV_OAUTH_HOST }}
-          oauth-clientid: ${{ secrets.DEV_CLIENT_ID }}
-          oauth-clientsecret: ${{ secrets.DEV_CLIENT_SECRET }}
+      - name: Backup ALL CPI Packages
+        run: |
+          flashpipe_full_sync \
+            --tmn-host "${{ secrets.DEV_TMN_HOST }}" \
+            --oauth-host "${{ secrets.DEV_OAUTH_HOST }}" \
+            --oauth-clientid "${{ secrets.DEV_CLIENT_ID }}" \
+            --oauth-clientsecret "${{ secrets.DEV_CLIENT_SECRET }}" \
+            --dir-artifacts-relative "cpi-artifacts" \
+            --git-commit-msg "Full tenant backup from CPI"
 
-          # This backs up ALL PACKAGES and ALL ARTIFACTS
-          dir-artifacts-relative: cpi-full-backup
-
-          git-commit-msg: "Full tenant backup from CPI"
 
