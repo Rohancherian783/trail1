@@ -28,7 +28,7 @@ jobs:
           oauth-clientsecret: ${{ secrets.DEV_CLIENT_SECRET }}
 
           # Package to sync
-          package-id: logan
+          package-id: ${{ github.event.inputs.package }}
 
           # Folder structure
           dir-artifacts-relative: cpi-artifacts/${{ github.event.inputs.package }}
@@ -36,6 +36,7 @@ jobs:
           git-commit-msg: "Sync package ${{ github.event.inputs.package }} from CPI"
 
           sync-package-details: true
+
 
 
 
