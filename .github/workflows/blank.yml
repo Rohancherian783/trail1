@@ -25,7 +25,7 @@ jobs:
           oauth-clientsecret: ${{ secrets.DEV_CLIENT_SECRET }}
  
           # IMPORTANT: You must provide your package ID here
-          package-id: PDFcoveter      
+          package-id: Task      
  
           # folder where artifacts will be saved inside repo
           dir-artifacts-relative: cpi-artifacts
