@@ -1,0 +1,40 @@
+name: Deploy CPI iFlow
+
+on:
+  workflow_dispatch:
+    inputs:
+      iflow:
+        description: "Enter iFlow name (folder under cpi-artifacts)"
+        required: true
+        default: "MAIL"
+      package:
+        description: "CPI Package Name"
+        required: true
+        default: "Make"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    container:
+      image: engswee/flashpipe:latest
+
+    steps:
+      - name: Checkout repository
+      - uses: actions/checkout@v4
+
+      - name: Deploy iFlow to CPI
+        run: |
+          echo "Deploying iFlow ${{ github.event.inputs.iflow }} from package ${{ github.event.inputs.package }}"
+
+          flashpipe_deploy_iflow \
+            --tmn-host "${{ secrets.DEV_TMN_HOST }}" \
+            --oauth-host "${{ secrets.DEV_OAUTH_HOST }}" \
+            --clientid "${{ secrets.DEV_CLIENT_ID }}" \
+            --clientsecret "${{ secrets.DEV_CLIENT_SECRET }}" \
+            --package-id "${{ github.event.inputs.package }}" \
+            --iflow-id "${{ github.event.inputs.iflow }}" \
+            --basedir "cpi-artifacts/${{ github.event.inputs.package }}/${{ github.event.inputs.iflow }}"
+
+      - name: Done
+        run: echo "Deployment completed."
