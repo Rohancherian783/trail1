@@ -1,9 +1,7 @@
-name: Sync CPI Packages to GitHub
+name: Sync CPI Artifacts to GitHub
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "30 14 * * *"
 
 jobs:
   sync:
@@ -11,26 +9,30 @@ jobs:
 
     container:
       image: engswee/flashpipe:latest
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Sync ALL packages (grouped by package)
-        uses: engswee/flashpipe-action/sync-package@v1
+      - name: Sync CPI Package
+        uses: engswee/flashpipe-action/sync@v1
         with:
           tmn-host: ${{ secrets.DEV_TMN_HOST }}
           oauth-host: ${{ secrets.DEV_OAUTH_HOST }}
           oauth-clientid: ${{ secrets.DEV_CLIENT_ID }}
           oauth-clientsecret: ${{ secrets.DEV_CLIENT_SECRET }}
 
-          # IMPORTANT — pulls ALL packages from tenant
-          package-filter: "*"     
+          # 👉 ENTER PACKAGE NAME HERE
+          package-id: SAP
 
-          # Each package becomes a folder inside cpi-artifacts/
-          dir-packages-relative: cpi-artifacts
+          # 👉 Correct folder structure
+          dir-artifacts-relative-package: cpi-artifacts
 
-          git-commit-msg: "Automated package-wise sync from CPI"
+          # Commit message
+          git-commit-msg: "Automated sync from CPI tenant"
+
+          sync-package-details: true
+
 
 
 
