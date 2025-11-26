@@ -1,4 +1,4 @@
-name: Sync CPI Artifacts to GitHub
+name: Sync CPI Package to GitHub
 
 on:
   workflow_dispatch:
@@ -14,7 +14,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Sync CPI Package
+      - name: Sync CPI artifacts using FlashPipe
         uses: engswee/flashpipe-action/sync@v1
         with:
           tmn-host: ${{ secrets.DEV_TMN_HOST }}
@@ -22,16 +22,20 @@ jobs:
           oauth-clientid: ${{ secrets.DEV_CLIENT_ID }}
           oauth-clientsecret: ${{ secrets.DEV_CLIENT_SECRET }}
 
-          # 👉 ENTER PACKAGE NAME HERE
-          package-id: SAP
+          # Enter your package name here
+          package-id: cpi
 
-          # 👉 Correct folder structure
-          dir-artifacts-relative-package: cpi-artifacts
+          # ⭐ Save artifacts INSIDE a subfolder named after the PACKAGE
+          dir-artifacts-relative: cpi-artifacts
 
-          # Commit message
-          git-commit-msg: "Automated sync from CPI tenant"
+          # ⭐ Enable folder structure: package → iflows
+          dir-level: package
+
+          git-commit-msg: "Sync package to GitHub (FlashPipe)"
 
           sync-package-details: true
+
+
 
 
 
