@@ -1,4 +1,4 @@
-name: Sync Specific CPI Package
+name: Download CPI Package ZIPs
 
 on:
   workflow_dispatch:
@@ -9,7 +9,7 @@ on:
         default: "Make"
 
 jobs:
-  sync:
+  download:
     runs-on: ubuntu-latest
 
     container:
@@ -19,23 +19,32 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Sync CPI artifacts for selected package
-        uses: engswee/flashpipe-action/sync@v1
-        with:
-          tmn-host: ${{ secrets.DEV_TMN_HOST }}
-          oauth-host: ${{ secrets.DEV_OAUTH_HOST }}
-          oauth-clientid: ${{ secrets.DEV_CLIENT_ID }}
-          oauth-clientsecret: ${{ secrets.DEV_CLIENT_SECRET }}
+      - name: Download ZIPs for selected package
+        env:
+          TMN_HOST: ${{ secrets.DEV_TMN_HOST }}
+          OAUTH_HOST: ${{ secrets.DEV_OAUTH_HOST }}
+          CLIENTID: ${{ secrets.DEV_CLIENT_ID }}
+          CLIENTSECRET: ${{ secrets.DEV_CLIENT_SECRET }}
+          PACKAGE: ${{ github.event.inputs.package }}
+        run: |
+          mkdir -p cpi-zips/$PACKAGE
 
-          # Package to sync
-          package-id: ${{ github.event.inputs.package }}
+          flashpipe_download_package \
+            --tmn-host "$TMN_HOST" \
+            --oauth-host "$OAUTH_HOST" \
+            --clientid "$CLIENTID" \
+            --clientsecret "$CLIENTSECRET" \
+            --package-id "$PACKAGE" \
+            --output-dir cpi-zips/$PACKAGE
 
-          # Folder structure
-          dir-artifacts-relative: cpi-artifacts/${{ github.event.inputs.package }}
+      - name: Commit ZIP files
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add cpi-zips
+          git commit -m "Downloaded ZIPs for package ${{ github.event.inputs.package }}" || echo "No changes"
+          git push
 
-          git-commit-msg: "Sync package ${{ github.event.inputs.package }} from CPI"
-
-          sync-package-details: true
 
 
 
