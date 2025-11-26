@@ -1,63 +1,41 @@
-name: Export CPI Package as ZIP
+name: Sync Specific CPI Package
 
 on:
   workflow_dispatch:
     inputs:
       package:
-        description: "Enter CPI Package Name"
+        description: "Enter CPI package name"
         required: true
         default: "Make"
 
 jobs:
-  export:
+  sync:
     runs-on: ubuntu-latest
 
+    container:
+      image: engswee/flashpipe:latest
+
     steps:
-      - name: Checkout repo
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install tools
-        run: sudo apt-get install -y curl jq
+      - name: Sync CPI artifacts for selected package
+        uses: engswee/flashpipe-action/sync@v1
+        with:
+          tmn-host: ${{ secrets.DEV_TMN_HOST }}
+          oauth-host: ${{ secrets.DEV_OAUTH_HOST }}
+          oauth-clientid: ${{ secrets.DEV_CLIENT_ID }}
+          oauth-clientsecret: ${{ secrets.DEV_CLIENT_SECRET }}
 
-      - name: Download iFlows ZIP from CPI
-        env:
-          TMN: ${{ secrets.DEV_TMN_HOST }}
-          OAUTH: ${{ secrets.DEV_OAUTH_HOST }}
-          CLIENT_ID: ${{ secrets.DEV_CLIENT_ID }}
-          CLIENT_SECRET: ${{ secrets.DEV_CLIENT_SECRET }}
-          PACKAGE: ${{ github.event.inputs.package }}
-        run: |
-          echo "== Getting OAuth Token =="
-          TOKEN=$(curl -s \
-              --data "grant_type=client_credentials&client_id=$CLIENT_ID&client_secret=$CLIENT_SECRET" \
-              "$OAUTH/oauth/token" | jq -r '.access_token')
+          # Package to sync
+          package-id: ${{ github.event.inputs.package }}
 
-          echo "== Fetching Artifacts for Package: $PACKAGE =="
-          ARTIFACTS=$(curl -s \
-            -H "Authorization: Bearer $TOKEN" \
-            "$TMN/api/v1/IntegrationPackages('$PACKAGE')/Artifacts")
+          # Folder structure
+          dir-artifacts-relative: cpi-artifacts/${{ github.event.inputs.package }}
 
-          echo $ARTIFACTS | jq .
+          git-commit-msg: "Sync package ${{ github.event.inputs.package }} from CPI"
 
-          IDS=$(echo "$ARTIFACTS" | jq -r '.d.results[].Id')
-          VERSIONS=$(echo "$ARTIFACTS" | jq -r '.d.results[].Version')
-
-          mkdir -p cpi-zips/$PACKAGE
-
-          paste <(echo "$IDS") <(echo "$VERSIONS") | while read ID VER; do
-            echo "Downloading $ID version $VER ..."
-            curl -s -H "Authorization: Bearer $TOKEN" \
-              -o "cpi-zips/$PACKAGE/${ID}_${VER}.zip" \
-              "$TMN/api/v1/IntegrationDesigntimeArtifacts(Id='$ID',Version='$VER')/%24value"
-          done
-
-      - name: Commit & Push ZIP Backup
-        run: |
-          git config user.name "github-actions"
-          git config user.email "actions@github.com"
-          git add cpi-zips/
-          git commit -m "ZIP backup for package ${{ github.event.inputs.package }}" || echo "No changes"
-          git push
+          sync-package-details: true
 
 
 
