@@ -1,7 +1,12 @@
-name: Sync CPI Artifacts to GitHub
+name: Sync Specific CPI Package
 
 on:
   workflow_dispatch:
+    inputs:
+      package:
+        description: "Enter CPI package name"
+        required: true
+        default: "Make"
 
 jobs:
   sync:
@@ -14,7 +19,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Sync CPI Artifacts (Grouped by Package)
+      - name: Sync CPI artifacts for selected package
         uses: engswee/flashpipe-action/sync@v1
         with:
           tmn-host: ${{ secrets.DEV_TMN_HOST }}
@@ -22,16 +27,16 @@ jobs:
           oauth-clientid: ${{ secrets.DEV_CLIENT_ID }}
           oauth-clientsecret: ${{ secrets.DEV_CLIENT_SECRET }}
 
-          # ⬇️ Your package ID here (one-by-one sync)
-          package-id: Make
+          # Package to sync
+          package-id: logan
 
-          # ⬇️ IMPORTANT — enables package folder grouping
-          dir-package-relative: cpi-artifacts
+          # Folder structure
+          dir-artifacts-relative: cpi-artifacts/${{ github.event.inputs.package }}
 
-          # Commit message
-          git-commit-msg: "Sync package to GitHub (FlashPipe)"
+          git-commit-msg: "Sync package ${{ github.event.inputs.package }} from CPI"
 
           sync-package-details: true
+
 
 
 
