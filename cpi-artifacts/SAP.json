@@ -1,0 +1,10 @@
+{
+  "d": {
+    "Id": "SAP",
+    "Name": "SAP",
+    "Description": "\u003cp\u003e\u003c/p\u003e",
+    "ShortText": "GITHUB ACTIONS",
+    "Version": "1.0.0",
+    "Mode": "EDIT_ALLOWED"
+  }
+}
