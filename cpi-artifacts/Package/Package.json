@@ -1,0 +1,10 @@
+{
+  "d": {
+    "Id": "Package",
+    "Name": "Package",
+    "Description": "\u003cp\u003e\u003c/p\u003e",
+    "ShortText": "Github Actions",
+    "Version": "1.0.0",
+    "Mode": "EDIT_ALLOWED"
+  }
+}
