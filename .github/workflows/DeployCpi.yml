@@ -1,10 +1,11 @@
 name: Deploy CPI Package (Manual ID Input)
  
 on:
+  # This section allows you to manually trigger the workflow and enter the Package ID.
   workflow_dispatch:
     inputs:
       package:
-        # Changed type from 'choice' to 'string'
+        # Using type 'string' allows you to enter any package name at runtime.
         description: "Enter the CPI Package ID to deploy (e.g., logan)"
         required: true
         type: string 
@@ -12,6 +13,7 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    # Run the entire job inside the FlashPipe Docker image for execution stability.
     container:
       image: engswee/flashpipe:latest
  
@@ -22,11 +24,12 @@ jobs:
       - name: Set up Environment Variables
         id: env_setup
         run: |
-          # Package ID is now pulled directly from the user's string input
+          # Set variables for easy access in the deployment step
           echo "PKG=${{ github.event.inputs.package }}" >> $GITHUB_ENV
           echo "PACKAGE_DIR=cpi-artifacts/${{ github.event.inputs.package }}" >> $GITHUB_ENV
 
-      - name: Import Package & Deploy Artifacts
+      - name: Import Package & Deploy Artifacts (Using sync target:tenant)
+        # Pass secrets as environment variables for FlashPipe
         env:
           TMN_HOST: ${{ secrets.DEV_TMN_HOST }}
           OAUTH_HOST: ${{ secrets.DEV_OAUTH_HOST }}
@@ -35,12 +38,14 @@ jobs:
         run: |
           echo "Starting deployment for package: $PKG"
           
-          # 1. Validation & Artifact ID finding
+          # --- 1. Validation & Artifact ID finding ---
+          # Check if the package folder exists in the Git repository
           if [ ! -d "$PACKAGE_DIR" ]; then
-            echo "::error::Package directory $PACKAGE_DIR not found in the repository. Please sync it first."
+            echo "::error::Package directory $PACKAGE_DIR not found in the repository. Please ensure package ID is correct and files are synced."
             exit 1
           fi
           
+          # Find all artifact subdirectory names (e.g., flow30)
           ARTIFACT_IDS=$(find "$PACKAGE_DIR" -maxdepth 1 -mindepth 1 -type d -printf "%f,")
           ARTIFACT_IDS=${ARTIFACT_IDS%,}
           
@@ -51,22 +56,20 @@ jobs:
           
           echo "Found Artifact IDs to deploy: $ARTIFACT_IDS"
           
-          # 2. Step 1: Import Package Structure (Ensures Package Exists)
-          echo "➡ Step 1: Importing package $PKG structure..."
-          flashpipe import-package \
+          # --- 2. Execute the FlashPipe sync command for Deployment ---
+          # This command performs the full Git -> CPI deployment in one robust step:
+          # - '--sync-package-details': Creates/updates the package structure (resolves 'Package does not exist').
+          # - '--target "tenant"': Flips the sync operation to a deploy/push.
+          # - '--activate-artifacts': Starts the deployed integration flow.
+          echo "➡ Deploying package $PKG and artifacts ($ARTIFACT_IDS) to tenant..."
+          
+          flashpipe sync \
             --tmn-host "$TMN_HOST" \
             --oauth-host "$OAUTH_HOST" \
             --oauth-clientid "$CLIENT_ID" \
             --oauth-clientsecret "$CLIENT_SECRET" \
             --package-id "$PKG" \
-            --dir-artifacts "$PACKAGE_DIR"
-            
-          # 3. Step 2: Deploy Artifacts
-          echo "➡ Step 2: Deploying artifacts ($ARTIFACT_IDS)..."
-          flashpipe deploy \
-            --tmn-host "$TMN_HOST" \
-            --oauth-host "$OAUTH_HOST" \
-            --oauth-clientid "$CLIENT_ID" \
-            --oauth-clientsecret "$CLIENT_SECRET" \
-            --artifact-ids "$ARTIFACT_IDS" \
-            --artifact-type "Integration"
+            --dir-artifacts "$PACKAGE_DIR" \
+            --sync-package-details \
+            --target "tenant" \
+            --activate-artifacts
