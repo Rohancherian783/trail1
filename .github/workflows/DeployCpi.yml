@@ -1,4 +1,22 @@
-- name: Deploy package artifacts using FlashPipe (FIXED)
+# Line 1
+name: Deploy CPI Package from Git to Tenant 
+# Line 2 (Check alignment here!)
+on:
+  workflow_dispatch:
+    inputs:
+      package_id:
+        description: "Enter the Package ID to deploy (must exist in Git)"
+        required: true
+ 
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+ 
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+ 
+      - name: Deploy package artifacts using FlashPipe
         env:
           PKG: ${{ github.event.inputs.package_id }}
           TMN_HOST: ${{ secrets.DEV_TMN_HOST }}
@@ -6,18 +24,18 @@
           CLIENT_ID: ${{ secrets.DEV_CLIENT_ID }}
           CLIENT_SECRET: ${{ secrets.DEV_CLIENT_SECRET }}
         run: |
-          PKG="${{ github.event.inputs.package_id }}"
           PACKAGE_DIR="cpi-artifacts/$PKG"
           
           # 1. Validation: Check if the package exists locally
           if [ ! -d "$PACKAGE_DIR" ]; then
-            echo "::error::Package directory $PACKAGE_DIR not found in the repository."
+            echo "::error::Package directory $PACKAGE_DIR not found in the repository. Please sync it first."
             exit 1
           fi
           
-          # 2. Get the list of all artifact directories
+          # 2. Get the list of all artifact directories (which are the Artifact IDs)
+          # Finds all subdirectories one level deep inside the package folder.
           ARTIFACT_IDS=$(find "$PACKAGE_DIR" -maxdepth 1 -mindepth 1 -type d -printf "%f,")
-          ARTIFACT_IDS=${ARTIFACT_IDS%,}
+          ARTIFACT_IDS=${ARTIFACT_IDS%,} # Remove trailing comma
           
           if [ -z "$ARTIFACT_IDS" ]; then
             echo "::warning::No artifacts found in $PACKAGE_DIR. Nothing to deploy."
@@ -31,17 +49,19 @@
             --user $(id -u):$(id -g) \
             -v "${GITHUB_WORKSPACE}:/workspace" \
             -w /workspace \
+            -e PKG="$PKG" \
+            -e ARTIFACT_IDS="$ARTIFACT_IDS" \
             -e TMN_HOST="$TMN_HOST" \
             -e OAUTH_HOST="$OAUTH_HOST" \
             -e CLIENT_ID="$CLIENT_ID" \
             -e CLIENT_SECRET="$CLIENT_SECRET" \
             engswee/flashpipe:latest \
             sh -c '
-              # The variables $TMN_HOST, $OAUTH_HOST, etc., are passed as environment variables.
-              # ARTIFACT_IDS and PKG are passed into the script body via the parent shell.
+              # The variables are passed as environment variables.
+              echo "Starting deployment for Package: $PKG with artifacts: $ARTIFACT_IDS"
               
-              echo "Starting deployment for Package: $PKG"
-              
+              # Deploy command now targets specific artifacts using their IDs and type.
+              # NOTE: This assumes all artifacts are of type "Integration".
               flashpipe deploy \
                 --tmn-host "$TMN_HOST" \
                 --oauth-host "$OAUTH_HOST" \
@@ -49,6 +69,4 @@
                 --oauth-clientsecret "$CLIENT_SECRET" \
                 --artifact-ids "$ARTIFACT_IDS" \
                 --artifact-type "Integration" 
-            ' # <--- THIS CLOSING SINGLE QUOTE WAS LIKELY MISSING OR MALFORMED
-            ' 
-            '
+            ' # <--- This ensures the sh -c quote is properly closed
