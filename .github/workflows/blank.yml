@@ -1,46 +1,28 @@
-name: Full CPI Tenant Backup
-
+name: Sync Multiple CPI Packages
+ 
 on:
   workflow_dispatch:
-
+    inputs:
+      packages:
+        description: "Enter package names (comma or space separated)"
+        required: true
+ 
 jobs:
-  backup:
+  sync:
     runs-on: ubuntu-latest
-
+ 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      - name: Fetch all CPI packages (with correct XML namespaces!)
-        id: fetch_packages
-        env:
-          TMN_HOST: ${{ secrets.DEV_TMN_HOST }}
-          OAUTH_HOST: ${{ secrets.DEV_OAUTH_HOST }}
-          CLIENT_ID: ${{ secrets.DEV_CLIENT_ID }}
-          CLIENT_SECRET: ${{ secrets.DEV_CLIENT_SECRET }}
+ 
+      - name: Normalize package list
+        id: normalize
         run: |
-          echo "➡ Fetch token"
-          TOKEN=$(curl -s --request POST \
-            "$OAUTH_HOST/oauth/token" \
-            --header "Content-Type: application/x-www-form-urlencoded" \
-            --data-urlencode "grant_type=client_credentials" \
-            --data-urlencode "client_id=$CLIENT_ID" \
-            --data-urlencode "client_secret=$CLIENT_SECRET" \
-            | jq -r '.access_token')
-
-          echo "➡ Fetch CPI packages..."
-          curl -s \
-            --header "Authorization: Bearer $TOKEN" \
-            "$TMN_HOST/api/v1/IntegrationPackages" \
-            -o packages.xml
-
-          echo "➡ Extracting package IDs..."
-          PKGS=$(xmllint --xpath "//*[local-name()='Id']/text()" packages.xml | tr '\n' ' ')
-          echo "Detected packages: $PKGS"
-
-          echo "packages=$PKGS" >> $GITHUB_OUTPUT
-
-      - name: Sync each package using FlashPipe
+          RAW="${{ github.event.inputs.packages }}"
+          CLEANED=$(echo "$RAW" | tr ',' ' ')
+          echo "packages=$CLEANED" >> $GITHUB_OUTPUT
+ 
+      - name: Run FlashPipe inside Docker (with correct permissions!)
         env:
           TMN_HOST: ${{ secrets.DEV_TMN_HOST }}
           OAUTH_HOST: ${{ secrets.DEV_OAUTH_HOST }}
@@ -48,12 +30,17 @@ jobs:
           CLIENT_SECRET: ${{ secrets.DEV_CLIENT_SECRET }}
         run: |
           docker run --rm \
+            --user $(id -u):$(id -g) \
             -v "${GITHUB_WORKSPACE}:/workspace" \
             -w /workspace \
-            engswee/flashpipe:latest sh -c '
-              for PKG in ${{ steps.fetch_packages.outputs.packages }}; do
-                echo "➡ Syncing package: $PKG"
-                
+            -e TMN_HOST="$TMN_HOST" \
+            -e OAUTH_HOST="$OAUTH_HOST" \
+            -e CLIENT_ID="$CLIENT_ID" \
+            -e CLIENT_SECRET="$CLIENT_SECRET" \
+            engswee/flashpipe:latest \
+            sh -c '
+              for PKG in ${{ steps.normalize.outputs.packages }}; do
+                echo "➡ Syncing $PKG..."
                 flashpipe sync \
                   --tmn-host "$TMN_HOST" \
                   --oauth-host "$OAUTH_HOST" \
@@ -64,13 +51,13 @@ jobs:
                   --sync-package-details
               done
             '
-
+ 
       - name: Commit & push
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git add .
-          git commit -m "Full CPI tenant backup" || echo "No changes"
+          git commit -m "Synced packages: ${{ github.event.inputs.packages }}" || echo "No changes"
           git push || true
 
 
