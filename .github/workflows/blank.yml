@@ -4,43 +4,74 @@ on:
   workflow_dispatch:
 
 jobs:
-  sync:
+  backup:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Run FlashPipe Full Sync (backup all packages)
+      - name: Get list of all packages from CPI
+        id: packages
         env:
           TMN_HOST: ${{ secrets.DEV_TMN_HOST }}
           OAUTH_HOST: ${{ secrets.DEV_OAUTH_HOST }}
           CLIENT_ID: ${{ secrets.DEV_CLIENT_ID }}
           CLIENT_SECRET: ${{ secrets.DEV_CLIENT_SECRET }}
         run: |
-          docker run --rm \
-            --user $(id -u):$(id -g) \
-            -v "${GITHUB_WORKSPACE}:/workspace" \
-            -w /workspace \
-            -e TMN_HOST="$TMN_HOST" \
-            -e OAUTH_HOST="$OAUTH_HOST" \
-            -e CLIENT_ID="$CLIENT_ID" \
-            -e CLIENT_SECRET="$CLIENT_SECRET" \
-            engswee/flashpipe:latest \
-            flashpipe full_sync \
-              --tmn-host "$TMN_HOST" \
-              --oauth-host "$OAUTH_HOST" \
-              --oauth-clientid "$CLIENT_ID" \
-              --oauth-clientsecret "$CLIENT_SECRET" \
-              --dir-artifacts "cpi-artifacts"
+          echo "➡ Fetching CPI packages..."
+          
+          # Fetch package listing from CPI API
+          curl --fail --silent \
+            -X GET "$TMN_HOST/api/v1/IntegrationPackages" \
+            -H "x-csrf-token: fetch" \
+            -u "$CLIENT_ID:$CLIENT_SECRET" \
+            -o packages.xml
+
+          echo "➡ Extracting package names..."
+          PKGS=$(xmllint --xpath "//d:entry/d:content/m:properties/m:Id/text()" packages.xml 2>/dev/null)
+          
+          echo "packages=$PKGS" >> $GITHUB_OUTPUT
+          echo "Found packages:"
+          echo "$PKGS"
+
+      - name: Run FlashPipe for ALL packages
+        env:
+          TMN_HOST: ${{ secrets.DEV_TMN_HOST }}
+          OAUTH_HOST: ${{ secrets.DEV_OAUTH_HOST }}
+          CLIENT_ID: ${{ secrets.DEV_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.DEV_CLIENT_SECRET }}
+        run: |
+          for PKG in ${{ steps.packages.outputs.packages }}; do
+            echo "➡ Syncing package: $PKG"
+
+            docker run --rm \
+              --user $(id -u):$(id -g) \
+              -v "${GITHUB_WORKSPACE}:/workspace" \
+              -w /workspace \
+              -e TMN_HOST="$TMN_HOST" \
+              -e OAUTH_HOST="$OAUTH_HOST" \
+              -e CLIENT_ID="$CLIENT_ID" \
+              -e CLIENT_SECRET="$CLIENT_SECRET" \
+              engswee/flashpipe:latest \
+              flashpipe sync \
+                --tmn-host "$TMN_HOST" \
+                --oauth-host "$OAUTH_HOST" \
+                --oauth-clientid "$CLIENT_ID" \
+                --oauth-clientsecret "$CLIENT_SECRET" \
+                --package-id "$PKG" \
+                --dir-artifacts "cpi-artifacts/$PKG" \
+                --sync-package-details
+          done
 
       - name: Commit & push
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git add .
-          git commit -m "Full CPI tenant backup" || echo "No changes"
+          git commit -m "Full CPI tenant backup - all packages" || echo "No changes"
           git push || true
+
 
 
 
