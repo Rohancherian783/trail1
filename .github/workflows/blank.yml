@@ -1,8 +1,7 @@
-name: Sync All Configured CPI Packages
+name: Sync All CPI Packages (Dynamic - No File)
  
 on:
   workflow_dispatch:
-    # No inputs needed - it reads from packages.txt
  
 jobs:
   sync:
@@ -12,26 +11,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
  
-      - name: Read and normalize package list
-        id: normalize
-        run: |
-          # The script requires a packages.txt file with one package ID per line
-          if [ ! -f packages.txt ]; then
-            echo "::error file=packages.txt::packages.txt not found. Cannot proceed."
-            exit 1
-          fi
-          # Read the file and replace newlines with spaces for shell iteration
-          PACKAGES=$(tr '\n' ' ' < packages.txt)
-          echo "packages=$PACKAGES" >> $GITHUB_OUTPUT
-          echo "Packages to sync: $PACKAGES"
- 
-      - name: Run FlashPipe inside Docker
+      - name: Run FlashPipe Dynamic Sync
         env:
           TMN_HOST: ${{ secrets.DEV_TMN_HOST }}
           OAUTH_HOST: ${{ secrets.DEV_OAUTH_HOST }}
           CLIENT_ID: ${{ secrets.DEV_CLIENT_ID }}
           CLIENT_SECRET: ${{ secrets.DEV_CLIENT_SECRET }}
         run: |
+          # 1. Start the Docker container
           docker run --rm \
             --user $(id -u):$(id -g) \
             -v "${GITHUB_WORKSPACE}:/workspace" \
@@ -42,10 +29,51 @@ jobs:
             -e CLIENT_SECRET="$CLIENT_SECRET" \
             engswee/flashpipe:latest \
             sh -c '
-              # Loop over the space-separated list of packages from the "normalize" step
-              for PKG in ${{ steps.normalize.outputs.packages }}; do
+              # --- Step 1: Generate Access Token ---
+              # We must assume FlashPipe needs to run the sync command to generate a token,
+              # but since we cannot get a direct "auth" command, we will try to use cURL
+              # with standard parameters, which may work if the necessary tools are present.
+              echo "🔑 Generating OAuth Token via cURL..."
+              
+              TOKEN_URL="https://$OAUTH_HOST/oauth/token"
+              
+              AUTH_RESPONSE=$(curl -s -X POST "$TOKEN_URL" \
+                -H "Content-Type: application/x-www-form-urlencoded" \
+                -d "grant_type=client_credentials&client_id=$CLIENT_ID&client_secret=$CLIENT_SECRET")
+              
+              # ATTENTION: This parsing assumes basic tools like awk/grep are available.
+              # This line extracts the access_token value from the JSON response.
+              TOKEN=$(echo "$AUTH_RESPONSE" | grep -o '"access_token":"[^"]*"' | awk -F'"' '{print $4}')
+              
+              if [ -z "$TOKEN" ]; then
+                echo "::error::Failed to retrieve access token. Check cURL and parsing syntax."
+                echo "Raw Auth Response: $AUTH_RESPONSE"
+                exit 1
+              fi
+              
+              # --- Step 2: Fetch and Parse Package List ---
+              echo "🔍 Fetching package list from tenant..."
+              API_URL="https://$TMN_HOST/api/v1/IntegrationPackages?\$format=json"
+              
+              # Fetch the package list using the token
+              PACKAGE_RESPONSE=$(curl -s -X GET "$API_URL" \
+                -H "Authorization: Bearer $TOKEN")
+              
+              # Parsing without jq: Split the JSON response on "Id" and extract the value.
+              # THIS IS EXTREMELY FRAGILE! The package IDs will be separated by spaces.
+              PACKAGE_IDS=$(echo "$PACKAGE_RESPONSE" | grep -o '"Id":"[^"]*"' | awk -F'"' '{print $4}')
+              
+              if [ -z "$PACKAGE_IDS" ]; then
+                echo "::warning::No packages found or API call failed. Check permissions."
+                echo "Raw Package Response: $PACKAGE_RESPONSE"
+                exit 0
+              fi
+              
+              echo "✅ Found packages: $PACKAGE_IDS"
+              
+              # --- Step 3: Iterate and Sync ---
+              for PKG in $PACKAGE_IDS; do
                 echo "➡ Syncing $PKG..."
-                # The sync command handles authentication internally
                 flashpipe sync \
                   --tmn-host "$TMN_HOST" \
                   --oauth-host "$OAUTH_HOST" \
@@ -62,7 +90,7 @@ jobs:
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git add .
-          git commit -m "Automated CPI package sync (configured list)" || echo "No changes"
+          git commit -m "Automated CPI package sync (dynamic list)" || echo "No changes"
           git push || true
 
 
