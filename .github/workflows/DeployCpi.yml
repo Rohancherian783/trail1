@@ -1,10 +1,11 @@
 name: Deploy CPI Package (Manual ID Input)
  
 on:
+  # Line 5: Start of event trigger
   workflow_dispatch:
     inputs:
       package:
-        # Using type 'string' allows you to enter any package name at runtime.
+        # Allows entering any package ID at runtime
         description: "Enter the CPI Package ID to deploy (e.g., logan)"
         required: true
         type: string 
@@ -12,6 +13,7 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    # Container is run for the entire job
     container:
       image: engswee/flashpipe:latest
  
@@ -22,20 +24,23 @@ jobs:
       - name: Set up Environment Variables
         id: env_setup
         run: |
+          # Set variables for the deployment step
           echo "PKG=${{ github.event.inputs.package }}" >> $GITHUB_ENV
           echo "PACKAGE_DIR=cpi-artifacts/${{ github.event.inputs.package }}" >> $GITHUB_ENV
 
+      # This step should be approximately where Line 71 might fall in a large file.
       - name: Deploy Package & Artifacts (Compatible Version)
-        # This step uses the minimal flags supported by the old FlashPipe version.
+        # Indent 'env' by two spaces under 'name'
         env:
           TMN_HOST: ${{ secrets.DEV_TMN_HOST }}
           OAUTH_HOST: ${{ secrets.DEV_OAUTH_HOST }}
           CLIENT_ID: ${{ secrets.DEV_CLIENT_ID }}
           CLIENT_SECRET: ${{ secrets.DEV_CLIENT_SECRET }}
+        # Indent 'run' by two spaces under 'name'
         run: |
           echo "Starting deployment for package: $PKG"
           
-          # --- 1. Validation & Artifact ID finding ---
+          # 1. Validation & Artifact ID finding
           if [ ! -d "$PACKAGE_DIR" ]; then
             echo "::error::Package directory $PACKAGE_DIR not found in the repository."
             exit 1
@@ -51,9 +56,9 @@ jobs:
           
           echo "Found Artifact IDs to deploy: $ARTIFACT_IDS"
           
-          # --- 2. Execute the FlashPipe sync command for Deployment (Without --activate-artifacts) ---
+          # 2. Execute the FlashPipe sync command for Deployment
           echo "➡ Deploying package $PKG and artifacts ($ARTIFACT_IDS) to tenant..."
-          echo "WARNING: Due to tool limitations, the artifact will be deployed but will remain STOPPED. Please start it manually in CPI."
+          echo "WARNING: The artifact will be deployed but remain STOPPED. Please start it manually."
           
           flashpipe sync \
             --tmn-host "$TMN_HOST" \
@@ -66,6 +71,3 @@ jobs:
             --target "tenant"
           
           echo "Deployment command successfully executed."
-
-
-This code eliminates the `--activate-artifacts` flag and is now fully compatible with the commands and flags supported by the FlashPipe version running in your pipeline.
