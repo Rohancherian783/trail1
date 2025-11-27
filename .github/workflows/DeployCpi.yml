@@ -1,79 +1,46 @@
-# Line 1
-name: Deploy CPI Package from Git to Tenant 
-# Line 2: CORRECTED to use 'on' keyword, flush left
-on:
-  # Line 3: Indent by two spaces
-  workflow_dispatch:
-    inputs:
-      package_id:
-        description: "Enter the Package ID to deploy (must exist in Git)"
-        required: true
- 
 jobs:
   deploy:
     runs-on: ubuntu-latest
- 
+    container:
+      image: engswee/flashpipe:latest
+
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
- 
-      - name: Deploy package artifacts using FlashPipe
+      # ... checkout step ...
+
+      #####################################################
+      # PACKAGE: CPIPracticeflows
+      #####################################################
+      - name: 'Deploy CPIPracticeflows (Metadata Update & Artifact Deployment)'
+        if: ${{ github.event.inputs.package == 'CPIPracticeflows' }}
         env:
-          PKG: ${{ github.event.inputs.package_id }}
           TMN_HOST: ${{ secrets.DEV_TMN_HOST }}
           OAUTH_HOST: ${{ secrets.DEV_OAUTH_HOST }}
           CLIENT_ID: ${{ secrets.DEV_CLIENT_ID }}
           CLIENT_SECRET: ${{ secrets.DEV_CLIENT_SECRET }}
         run: |
+          PKG="CPIPracticeflows"
+          
+          # 1. Ensure Package Structure Exists (Import/Update Metadata)
+          echo "➡ Step 1: Updating package metadata..."
+          flashpipe import-package \
+            --tmn-host "$TMN_HOST" \
+            --oauth-host "$OAUTH_HOST" \
+            --oauth-clientid "$CLIENT_ID" \
+            --oauth-clientsecret "$CLIENT_SECRET" \
+            --package-id "$PKG" \
+            --dir-artifacts "cpi-artifacts/$PKG"
+
+          # 2. Deploy Artifacts (Find Artifact IDs first, if needed)
+          echo "➡ Step 2: Deploying artifacts..."
+          
           PACKAGE_DIR="cpi-artifacts/$PKG"
-          
-          # 1. Validation and Artifact ID finding
-          if [ ! -d "$PACKAGE_DIR" ]; then
-            echo "::error::Package directory $PACKAGE_DIR not found in the repository. Please sync it first."
-            exit 1
-          fi
-          
           ARTIFACT_IDS=$(find "$PACKAGE_DIR" -maxdepth 1 -mindepth 1 -type d -printf "%f,")
           ARTIFACT_IDS=${ARTIFACT_IDS%,}
           
-          if [ -z "$ARTIFACT_IDS" ]; then
-            echo "::warning::No artifacts found in $PACKAGE_DIR. Nothing to deploy."
-            exit 0
-          fi
-          
-          echo "Deploying Artifact IDs: $ARTIFACT_IDS from package $PKG"
-          
-          # 2. Run FlashPipe commands inside Docker
-          docker run --rm \
-            --user $(id -u):$(id -g) \
-            -v "${GITHUB_WORKSPACE}:/workspace" \
-            -w /workspace \
-            -e PKG="$PKG" \
-            -e ARTIFACT_IDS="$ARTIFACT_IDS" \
-            -e TMN_HOST="$TMN_HOST" \
-            -e OAUTH_HOST="$OAUTH_HOST" \
-            -e CLIENT_ID="$CLIENT_ID" \
-            -e CLIENT_SECRET="$CLIENT_SECRET" \
-            engswee/flashpipe:latest \
-            sh -c '
-              # COMMAND 1: Ensures package structure exists in CPI
-              echo "➡ Step 1: Importing package $PKG structure..."
-              flashpipe import-package \
-                --tmn-host "$TMN_HOST" \
-                --oauth-host "$OAUTH_HOST" \
-                --oauth-clientid "$CLIENT_ID" \
-                --oauth-clientsecret "$CLIENT_SECRET" \
-                --package-id "$PKG" \
-                --dir-artifacts "cpi-artifacts/$PKG"
-                
-              # COMMAND 2: Deploys the artifacts
-              echo "➡ Step 2: Deploying artifacts ($ARTIFACT_IDS)..."
-              flashpipe deploy \
-                --tmn-host "$TMN_HOST" \
-                --oauth-host "$OAUTH_HOST" \
-                --oauth-clientid "$CLIENT_ID" \
-                --oauth-clientsecret "$CLIENT_SECRET" \
-                --artifact-ids "$ARTIFACT_IDS" \
-                --artifact-type "Integration" 
-            '
-            '
+          flashpipe deploy \
+            --tmn-host "$TMN_HOST" \
+            --oauth-host "$OAUTH_HOST" \
+            --oauth-clientid "$CLIENT_ID" \
+            --oauth-clientsecret "$CLIENT_SECRET" \
+            --artifact-ids "$ARTIFACT_IDS" \
+            --artifact-type "Integration"
