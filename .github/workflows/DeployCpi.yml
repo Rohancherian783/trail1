@@ -1,6 +1,6 @@
 # Line 1
 name: Deploy CPI Package from Git to Tenant 
-# Line 2: MUST be the 'on' keyword, flush left
+# Line 2: CORRECTED to use 'on' keyword, flush left
 on:
   # Line 3: Indent by two spaces
   workflow_dispatch:
@@ -17,7 +17,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
  
-      - name: Deploy package artifacts using FlashPipe (FIXED)
+      - name: Deploy package artifacts using FlashPipe
         env:
           PKG: ${{ github.event.inputs.package_id }}
           TMN_HOST: ${{ secrets.DEV_TMN_HOST }}
@@ -27,7 +27,7 @@ jobs:
         run: |
           PACKAGE_DIR="cpi-artifacts/$PKG"
           
-          # 1. Validation and Artifact ID finding remains the same
+          # 1. Validation and Artifact ID finding
           if [ ! -d "$PACKAGE_DIR" ]; then
             echo "::error::Package directory $PACKAGE_DIR not found in the repository. Please sync it first."
             exit 1
@@ -56,21 +56,18 @@ jobs:
             -e CLIENT_SECRET="$CLIENT_SECRET" \
             engswee/flashpipe:latest \
             sh -c '
-              echo "➡ Step 1: Ensuring package $PKG exists on tenant..."
-              
-              # Run flashpipe sync to ensure the package structure is created if missing.
-              flashpipe sync \
+              # COMMAND 1: Ensures package structure exists in CPI
+              echo "➡ Step 1: Importing package $PKG structure..."
+              flashpipe import-package \
                 --tmn-host "$TMN_HOST" \
                 --oauth-host "$OAUTH_HOST" \
                 --oauth-clientid "$CLIENT_ID" \
                 --oauth-clientsecret "$CLIENT_SECRET" \
                 --package-id "$PKG" \
-                --dir-artifacts "cpi-artifacts/$PKG" \
-                --sync-package-details
+                --dir-artifacts "cpi-artifacts/$PKG"
                 
+              # COMMAND 2: Deploys the artifacts
               echo "➡ Step 2: Deploying artifacts ($ARTIFACT_IDS)..."
-              
-              # Now run the deploy command, which should succeed since the package exists.
               flashpipe deploy \
                 --tmn-host "$TMN_HOST" \
                 --oauth-host "$OAUTH_HOST" \
@@ -78,4 +75,5 @@ jobs:
                 --oauth-clientsecret "$CLIENT_SECRET" \
                 --artifact-ids "$ARTIFACT_IDS" \
                 --artifact-type "Integration" 
+            '
             '
