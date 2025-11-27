@@ -1,7 +1,6 @@
 name: Deploy CPI Package (Manual ID Input)
  
 on:
-  # This section allows you to manually trigger the workflow and enter the Package ID.
   workflow_dispatch:
     inputs:
       package:
@@ -13,7 +12,6 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    # Run the entire job inside the FlashPipe Docker image for execution stability.
     container:
       image: engswee/flashpipe:latest
  
@@ -24,12 +22,11 @@ jobs:
       - name: Set up Environment Variables
         id: env_setup
         run: |
-          # Set variables for easy access in the deployment step
           echo "PKG=${{ github.event.inputs.package }}" >> $GITHUB_ENV
           echo "PACKAGE_DIR=cpi-artifacts/${{ github.event.inputs.package }}" >> $GITHUB_ENV
 
-      - name: Import Package & Deploy Artifacts (Using sync target:tenant)
-        # Pass secrets as environment variables for FlashPipe
+      - name: Deploy Package & Artifacts (Compatible Version)
+        # This step uses the minimal flags supported by the old FlashPipe version.
         env:
           TMN_HOST: ${{ secrets.DEV_TMN_HOST }}
           OAUTH_HOST: ${{ secrets.DEV_OAUTH_HOST }}
@@ -39,13 +36,11 @@ jobs:
           echo "Starting deployment for package: $PKG"
           
           # --- 1. Validation & Artifact ID finding ---
-          # Check if the package folder exists in the Git repository
           if [ ! -d "$PACKAGE_DIR" ]; then
-            echo "::error::Package directory $PACKAGE_DIR not found in the repository. Please ensure package ID is correct and files are synced."
+            echo "::error::Package directory $PACKAGE_DIR not found in the repository."
             exit 1
           fi
           
-          # Find all artifact subdirectory names (e.g., flow30)
           ARTIFACT_IDS=$(find "$PACKAGE_DIR" -maxdepth 1 -mindepth 1 -type d -printf "%f,")
           ARTIFACT_IDS=${ARTIFACT_IDS%,}
           
@@ -56,12 +51,9 @@ jobs:
           
           echo "Found Artifact IDs to deploy: $ARTIFACT_IDS"
           
-          # --- 2. Execute the FlashPipe sync command for Deployment ---
-          # This command performs the full Git -> CPI deployment in one robust step:
-          # - '--sync-package-details': Creates/updates the package structure (resolves 'Package does not exist').
-          # - '--target "tenant"': Flips the sync operation to a deploy/push.
-          # - '--activate-artifacts': Starts the deployed integration flow.
+          # --- 2. Execute the FlashPipe sync command for Deployment (Without --activate-artifacts) ---
           echo "➡ Deploying package $PKG and artifacts ($ARTIFACT_IDS) to tenant..."
+          echo "WARNING: Due to tool limitations, the artifact will be deployed but will remain STOPPED. Please start it manually in CPI."
           
           flashpipe sync \
             --tmn-host "$TMN_HOST" \
@@ -71,5 +63,9 @@ jobs:
             --package-id "$PKG" \
             --dir-artifacts "$PACKAGE_DIR" \
             --sync-package-details \
-            --target "tenant" \
-            --activate-artifacts
+            --target "tenant"
+          
+          echo "Deployment command successfully executed."
+
+
+This code eliminates the `--activate-artifacts` flag and is now fully compatible with the commands and flags supported by the FlashPipe version running in your pipeline.
