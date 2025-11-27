@@ -19,7 +19,8 @@ jobs:
           CLIENT_ID: ${{ secrets.DEV_CLIENT_ID }}
           CLIENT_SECRET: ${{ secrets.DEV_CLIENT_SECRET }}
         run: |
-          echo "➡ Getting OAuth token..."
+          echo "➡ Fetching CPI packages..."
+
           TOKEN=$(curl -s --request POST \
             "$OAUTH_HOST/oauth/token" \
             --header "Content-Type: application/x-www-form-urlencoded" \
@@ -28,16 +29,21 @@ jobs:
             --data-urlencode "client_secret=$CLIENT_SECRET" \
             | jq -r '.access_token')
 
-          echo "➡ Fetching package list..."
           curl -s \
             --header "Authorization: Bearer $TOKEN" \
             "$TMN_HOST/api/v1/IntegrationPackages" \
             -o packages.xml
 
           echo "➡ Extracting package names..."
-          PKGS=$(xmllint --xpath "//*[local-name()='Id']/text()" packages.xml | tr '\n' ' ')
+
+          PKGS=$(xmllint --xpath \
+            'declare namespace d="http://schemas.microsoft.com/ado/2007/08/dataservices"; 
+             declare namespace m="http://schemas.microsoft.com/ado/2007/08/dataservices/metadata";
+             //d:entry/d:content/m:properties/d:Id/text()' \
+            packages.xml 2>/dev/null | tr '\n' ' ')
+
+          echo "Extracted packages: $PKGS"
           echo "packages=$PKGS" >> $GITHUB_OUTPUT
-          echo "Packages found: $PKGS"
 
       - name: Backup all packages using FlashPipe
         env:
@@ -51,7 +57,7 @@ jobs:
             -w /workspace \
             engswee/flashpipe:latest sh -c '
               for PKG in ${{ steps.fetch_packages.outputs.packages }}; do
-                echo "➡ Syncing package: $PKG"
+                echo "➡ Syncing $PKG"
                 flashpipe sync \
                   --tmn-host "$TMN_HOST" \
                   --oauth-host "$OAUTH_HOST" \
@@ -70,6 +76,7 @@ jobs:
           git add .
           git commit -m "Full CPI tenant backup" || echo "No changes"
           git push || true
+
 
 
 
