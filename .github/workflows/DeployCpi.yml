@@ -1,24 +1,17 @@
-name: Deploy Selected CPI Package
+name: Deploy CPI Package (Manual ID Input)
  
 on:
-  # The 'on' keyword must be flush left to avoid the YAML error.
   workflow_dispatch:
     inputs:
       package:
-        description: "Select the CPI package to deploy"
+        # Changed type from 'choice' to 'string'
+        description: "Enter the CPI Package ID to deploy (e.g., logan)"
         required: true
-        type: choice
-        options:
-          # Include all your packages here
-          - CPIPracticeflows
-          - EmailreceiverxlsxToXML
-          - cicdcheck1
-          - deploycheck
+        type: string 
  
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    # Run the entire job inside the FlashPipe Docker image
     container:
       image: engswee/flashpipe:latest
  
@@ -26,35 +19,30 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
  
-      # Set up environment variables for FlashPipe
       - name: Set up Environment Variables
         id: env_setup
         run: |
-          # The package ID selected by the user
+          # Package ID is now pulled directly from the user's string input
           echo "PKG=${{ github.event.inputs.package }}" >> $GITHUB_ENV
-          # The directory where artifacts are stored
           echo "PACKAGE_DIR=cpi-artifacts/${{ github.event.inputs.package }}" >> $GITHUB_ENV
 
-      # This step handles the import (package creation/update) and deployment of artifacts
       - name: Import Package & Deploy Artifacts
         env:
           TMN_HOST: ${{ secrets.DEV_TMN_HOST }}
           OAUTH_HOST: ${{ secrets.DEV_OAUTH_HOST }}
           CLIENT_ID: ${{ secrets.DEV_CLIENT_ID }}
           CLIENT_SECRET: ${{ secrets.DEV_CLIENT_SECRET }}
-        # The 'run' block executes inside the FlashPipe container
         run: |
           echo "Starting deployment for package: $PKG"
           
-          # --- 1. Validation & Artifact ID finding ---
+          # 1. Validation & Artifact ID finding
           if [ ! -d "$PACKAGE_DIR" ]; then
-            echo "::error::Package directory $PACKAGE_DIR not found in the repository."
+            echo "::error::Package directory $PACKAGE_DIR not found in the repository. Please sync it first."
             exit 1
           fi
           
-          # Find all artifact subdirectory names (which are the artifact IDs)
           ARTIFACT_IDS=$(find "$PACKAGE_DIR" -maxdepth 1 -mindepth 1 -type d -printf "%f,")
-          ARTIFACT_IDS=${ARTIFACT_IDS%,} # Remove trailing comma
+          ARTIFACT_IDS=${ARTIFACT_IDS%,}
           
           if [ -z "$ARTIFACT_IDS" ]; then
             echo "::warning::No artifacts found in $PACKAGE_DIR. Nothing to deploy."
@@ -63,7 +51,7 @@ jobs:
           
           echo "Found Artifact IDs to deploy: $ARTIFACT_IDS"
           
-          # --- 2. Step 1: Import Package Structure (Ensures Package Exists) ---
+          # 2. Step 1: Import Package Structure (Ensures Package Exists)
           echo "➡ Step 1: Importing package $PKG structure..."
           flashpipe import-package \
             --tmn-host "$TMN_HOST" \
@@ -73,11 +61,8 @@ jobs:
             --package-id "$PKG" \
             --dir-artifacts "$PACKAGE_DIR"
             
-          # --- 3. Step 2: Deploy Artifacts ---
+          # 3. Step 2: Deploy Artifacts
           echo "➡ Step 2: Deploying artifacts ($ARTIFACT_IDS)..."
-          
-          # NOTE: We assume all artifacts in the directory are "Integration" (iFlows).
-          # If you have multiple types (mappings, scripts), you need separate deploy calls.
           flashpipe deploy \
             --tmn-host "$TMN_HOST" \
             --oauth-host "$OAUTH_HOST" \
