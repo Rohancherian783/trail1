@@ -1,12 +1,49 @@
-- name: Deploy package using FlashPipe (FIXED)
+name: Deploy CPI Package from Git to Tenant
+ 
+on:
+  workflow_dispatch:
+    inputs:
+      package_id:
+        description: "Enter the Package ID to deploy (must exist in Git)"
+        required: true
+ 
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+ 
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+ 
+      - name: Deploy package artifacts using FlashPipe
         env:
+          PKG: ${{ github.event.inputs.package_id }}
           TMN_HOST: ${{ secrets.DEV_TMN_HOST }}
           OAUTH_HOST: ${{ secrets.DEV_OAUTH_HOST }}
           CLIENT_ID: ${{ secrets.DEV_CLIENT_ID }}
           CLIENT_SECRET: ${{ secrets.DEV_CLIENT_SECRET }}
         run: |
-          PKG="${{ github.event.inputs.package }}" # PKG is "logan"
+          PACKAGE_DIR="cpi-artifacts/$PKG"
           
+          # 1. Validation: Check if the package exists locally
+          if [ ! -d "$PACKAGE_DIR" ]; then
+            echo "::error::Package directory $PACKAGE_DIR not found in the repository. Please sync it first."
+            exit 1
+          fi
+          
+          # 2. Get the list of all artifact directories (which are the Artifact IDs)
+          # The find command ensures we only look one level deep inside the package directory.
+          ARTIFACT_IDS=$(find "$PACKAGE_DIR" -maxdepth 1 -mindepth 1 -type d -printf "%f,")
+          ARTIFACT_IDS=${ARTIFACT_IDS%,} # Remove trailing comma
+          
+          if [ -z "$ARTIFACT_IDS" ]; then
+            echo "::warning::No artifacts found in $PACKAGE_DIR. Nothing to deploy."
+            exit 0
+          fi
+          
+          echo "Deploying Artifact IDs: $ARTIFACT_IDS from package $PKG"
+          
+          # 3. Run FlashPipe Deploy inside Docker
           docker run --rm \
             --user $(id -u):$(id -g) \
             -v "${GITHUB_WORKSPACE}:/workspace" \
@@ -17,29 +54,9 @@
             -e CLIENT_SECRET="$CLIENT_SECRET" \
             engswee/flashpipe:latest \
             sh -c '
-              # Use the package directory to deploy ALL artifacts within it
-              PACKAGE_DIR="cpi-artifacts/$PKG"
-              
-              if [ ! -d "$PACKAGE_DIR" ]; then
-                echo "::error::Package directory $PACKAGE_DIR not found. Did you sync it first?"
-                exit 1
-              fi
-              
-              # Find all artifact directories (which are the artifact IDs)
-              ARTIFACT_IDS=$(find "$PACKAGE_DIR" -maxdepth 1 -mindepth 1 -type d -printf "%f,")
-              ARTIFACT_IDS=${ARTIFACT_IDS%,} # Remove trailing comma
-              
-              if [ -z "$ARTIFACT_IDS" ]; then
-                echo "::error::No artifacts found in $PACKAGE_DIR."
-                exit 1
-              fi
-              
-              echo "Deploying artifacts: $ARTIFACT_IDS from package directory $PACKAGE_DIR"
-              
-              # Deploy command now targets specific artifacts using their IDs, 
-              # which implicitly points to the package directory structure.
-              # We must specify the directory separately using a config file or similar if needed.
-              # Let's try to deploy just the integration flows first as a test.
+              # Use the global environment variables set in the parent run block
+              # NOTE: We assume all artifacts in the directory are Integration Flows for simplicity.
+              # If you have multiple types (Mappings, Scripts), you need separate deploy calls for each type.
               flashpipe deploy \
                 --tmn-host "$TMN_HOST" \
                 --oauth-host "$OAUTH_HOST" \
@@ -47,4 +64,5 @@
                 --oauth-clientsecret "$CLIENT_SECRET" \
                 --artifact-ids "$ARTIFACT_IDS" \
                 --artifact-type "Integration" 
+            ' 
             '
