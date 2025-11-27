@@ -1,0 +1,10 @@
+{
+  "d": {
+    "Id": "cpi",
+    "Name": "cpi",
+    "Description": "\u003cp\u003e\u003c/p\u003e",
+    "ShortText": "testing",
+    "Version": "1.0.0",
+    "Mode": "EDIT_ALLOWED"
+  }
+}
