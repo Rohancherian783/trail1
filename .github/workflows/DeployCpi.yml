@@ -1,123 +1,43 @@
-name: Deploy Selected CPI Package
+name: Deploy Single CPI Package to Tenant
  
 on:
   workflow_dispatch:
     inputs:
       package:
-        description: "Select the CPI package to deploy"
+        description: "Enter package name to deploy"
         required: true
-        type: choice
-        options:
-          - CPIPracticeflows
-          - EmailreceiverxlsxToXML
-          - cicdcheck1
-          - deploycheck
  
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    container:
-      image: engswee/flashpipe:latest
  
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
  
-      #####################################################
-      # PACKAGE: CPIPracticeflows
-      #####################################################
-      - name: 'Update CPIPracticeflows'
-        if: ${{ github.event.inputs.package == 'CPIPracticeflows' }}
-        uses: engswee/flashpipe-action/update/package@v1
-        with:
-          tmn-host: ${{ secrets.DEV_TMN_HOST }}
-          oauth-host: ${{ secrets.DEV_OAUTH_HOST }}
-          oauth-clientid: ${{ secrets.DEV_CLIENT_ID }}
-          oauth-clientsecret: ${{ secrets.DEV_CLIENT_SECRET }}
-          package-file-relative: cpi-artifacts/CPIPracticeflows/CPIPracticeflows.json
- 
-      - name: 'Deploy CPIPracticeflows artifacts'
-        if: ${{ github.event.inputs.package == 'CPIPracticeflows' }}
-        uses: engswee/flashpipe-action/sync@v1
-        with:
-          tmn-host: ${{ secrets.DEV_TMN_HOST }}
-          oauth-host: ${{ secrets.DEV_OAUTH_HOST }}
-          oauth-clientid: ${{ secrets.DEV_CLIENT_ID }}
-          oauth-clientsecret: ${{ secrets.DEV_CLIENT_SECRET }}
-          package-id: CPIPracticeflows
-          target: tenant
-          dir-artifacts-relative: cpi-artifacts/CPIPracticeflows
- 
-      #####################################################
-      # PACKAGE: EmailreceiverxlsxToXML
-      #####################################################
-      - name: 'Update EmailreceiverxlsxToXML'
-        if: ${{ github.event.inputs.package == 'EmailreceiverxlsxToXML' }}
-        uses: engswee/flashpipe-action/update/package@v1
-        with:
-          tmn-host: ${{ secrets.DEV_TMN_HOST }}
-          oauth-host: ${{ secrets.DEV_OAUTH_HOST }}
-          oauth-clientid: ${{ secrets.DEV_CLIENT_ID }}
-          oauth-clientsecret: ${{ secrets.DEV_CLIENT_SECRET }}
-          package-file-relative: cpi-artifacts/EmailreceiverxlsxToXML/EmailreceiverxlsxToXML.json
- 
-      - name: 'Deploy EmailreceiverxlsxToXML artifacts'
-        if: ${{ github.event.inputs.package == 'EmailreceiverxlsxToXML' }}
-        uses: engswee/flashpipe-action/sync@v1
-        with:
-          tmn-host: ${{ secrets.DEV_TMN_HOST }}
-          oauth-host: ${{ secrets.DEV_OAUTH_HOST }}
-          oauth-clientid: ${{ secrets.DEV_CLIENT_ID }}
-          oauth-clientsecret: ${{ secrets.DEV_CLIENT_SECRET }}
-          package-id: EmailreceiverxlsxToXML
-          target: tenant
-          dir-artifacts-relative: cpi-artifacts/EmailreceiverxlsxToXML
- 
-      #####################################################
-      # PACKAGE: cicdcheck1
-      #####################################################
-      - name: 'Update cicdcheck1'
-        if: ${{ github.event.inputs.package == 'cicdcheck1' }}
-        uses: engswee/flashpipe-action/update/package@v1
-        with:
-          tmn-host: ${{ secrets.DEV_TMN_HOST }}
-          oauth-host: ${{ secrets.DEV_OAUTH_HOST }}
-          oauth-clientid: ${{ secrets.DEV_CLIENT_ID }}
-          oauth-clientsecret: ${{ secrets.DEV_CLIENT_SECRET }}
-          package-file-relative: cpi-artifacts/cicdcheck1/cicdcheck1.json
- 
-      - name: 'Deploy cicdcheck1 artifacts'
-        if: ${{ github.event.inputs.package == 'cicdcheck1' }}
-        uses: engswee/flashpipe-action/sync@v1
-        with:
-          tmn-host: ${{ secrets.DEV_TMN_HOST }}
-          oauth-host: ${{ secrets.DEV_OAUTH_HOST }}
-          oauth-clientid: ${{ secrets.DEV_CLIENT_ID }}
-          oauth-clientsecret: ${{ secrets.DEV_CLIENT_SECRET }}
-          package-id: cicdcheck1
-          target: tenant
-          dir-artifacts-relative: cpi-artifacts/cicdcheck1
- 
-      #####################################################
-      # PACKAGE: deploycheck
-      #####################################################
-      - name: 'Update deploycheck'
-        if: ${{ github.event.inputs.package == 'deploycheck' }}
-        uses: engswee/flashpipe-action/update/package@v1
-        with:
-          tmn-host: ${{ secrets.DEV_TMN_HOST }}
-          oauth-host: ${{ secrets.DEV_OAUTH_HOST }}
-          oauth-clientid: ${{ secrets.DEV_CLIENT_ID }}
-          oauth-clientsecret: ${{ secrets.DEV_CLIENT_SECRET }}
-          package-file-relative: cpi-artifacts/deploycheck/deploycheck.json
- 
-      - name: 'Deploy deploycheck artifacts'
-        if: ${{ github.event.inputs.package == 'deploycheck' }}
-        uses: engswee/flashpipe-action/sync@v1
-        with:
-          tmn-host: ${{ secrets.DEV_TMN_HOST }}
-          oauth-host: ${{ secrets.DEV_OAUTH_HOST }}
-          oauth-clientid: ${{ secrets.DEV_CLIENT_ID }}
-          oauth-clientsecret: ${{ secrets.DEV_CLIENT_SECRET }}
-          package-id: deploycheck
-          target: tenant
-          dir-artifacts-relative: cpi-artifacts/deploycheck
+      - name: Deploy package using FlashPipe
+        env:
+          TMN_HOST: ${{ secrets.DEV_TMN_HOST }}
+          OAUTH_HOST: ${{ secrets.DEV_OAUTH_HOST }}
+          CLIENT_ID: ${{ secrets.DEV_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.DEV_CLIENT_SECRET }}
+        run: |
+          PKG="${{ github.event.inputs.package }}"
+          
+          docker run --rm \
+            --user $(id -u):$(id -g) \
+            -v "${GITHUB_WORKSPACE}:/workspace" \
+            -w /workspace \
+            -e TMN_HOST="$TMN_HOST" \
+            -e OAUTH_HOST="$OAUTH_HOST" \
+            -e CLIENT_ID="$CLIENT_ID" \
+            -e CLIENT_SECRET="$CLIENT_SECRET" \
+            engswee/flashpipe:latest \
+            flashpipe deploy \
+              --tmn-host "$TMN_HOST" \
+              --oauth-host "$OAUTH_HOST" \
+              --oauth-clientid "$CLIENT_ID" \
+              --oauth-clientsecret "$CLIENT_SECRET" \
+              --package-id "$PKG" \
+              --dir-artifacts "cpi-artifacts/$PKG" \
+              --deploy-artifacts
