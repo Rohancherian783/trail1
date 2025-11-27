@@ -1,28 +1,17 @@
-name: Sync Multiple CPI Packages
- 
+name: Full CPI Tenant Backup
+
 on:
   workflow_dispatch:
-    inputs:
-      packages:
-        description: "Enter package names (comma or space separated)"
-        required: true
- 
+
 jobs:
   sync:
     runs-on: ubuntu-latest
- 
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
- 
-      - name: Normalize package list
-        id: normalize
-        run: |
-          RAW="${{ github.event.inputs.packages }}"
-          CLEANED=$(echo "$RAW" | tr ',' ' ')
-          echo "packages=$CLEANED" >> $GITHUB_OUTPUT
- 
-      - name: Run FlashPipe inside Docker (with correct permissions!)
+
+      - name: Run FlashPipe Full Sync (backup all packages)
         env:
           TMN_HOST: ${{ secrets.DEV_TMN_HOST }}
           OAUTH_HOST: ${{ secrets.DEV_OAUTH_HOST }}
@@ -38,27 +27,21 @@ jobs:
             -e CLIENT_ID="$CLIENT_ID" \
             -e CLIENT_SECRET="$CLIENT_SECRET" \
             engswee/flashpipe:latest \
-            sh -c '
-              for PKG in ${{ steps.normalize.outputs.packages }}; do
-                echo "➡ Syncing $PKG..."
-                flashpipe sync \
-                  --tmn-host "$TMN_HOST" \
-                  --oauth-host "$OAUTH_HOST" \
-                  --oauth-clientid "$CLIENT_ID" \
-                  --oauth-clientsecret "$CLIENT_SECRET" \
-                  --package-id "$PKG" \
-                  --dir-artifacts "cpi-artifacts/$PKG" \
-                  --sync-package-details
-              done
-            '
- 
+            flashpipe full_sync \
+              --tmn-host "$TMN_HOST" \
+              --oauth-host "$OAUTH_HOST" \
+              --oauth-clientid "$CLIENT_ID" \
+              --oauth-clientsecret "$CLIENT_SECRET" \
+              --dir-artifacts "cpi-artifacts"
+
       - name: Commit & push
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git add .
-          git commit -m "Synced packages: ${{ github.event.inputs.packages }}" || echo "No changes"
+          git commit -m "Full CPI tenant backup" || echo "No changes"
           git push || true
+
 
 
 
