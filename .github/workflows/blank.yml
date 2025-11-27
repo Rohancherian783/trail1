@@ -1,4 +1,4 @@
-name: Sync All CPI Packages (Dynamic - No File)
+name: Sync All CPI Packages (Dynamic - FINAL ATTEMPT)
  
 on:
   workflow_dispatch:
@@ -11,14 +11,63 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
  
-      - name: Run FlashPipe Dynamic Sync
+      - name: Install Dependencies for CPI API Calls
+        run: |
+          # Install jq (JSON processor) on the GitHub Runner
+          sudo apt-get update
+          sudo apt-get install -y jq curl
+ 
+      - name: Dynamic Fetch and Normalize Package List
+        id: normalize
         env:
           TMN_HOST: ${{ secrets.DEV_TMN_HOST }}
           OAUTH_HOST: ${{ secrets.DEV_OAUTH_HOST }}
           CLIENT_ID: ${{ secrets.DEV_CLIENT_ID }}
           CLIENT_SECRET: ${{ secrets.DEV_CLIENT_SECRET }}
         run: |
-          # 1. Start the Docker container
+          echo "🔑 Generating OAuth Token via cURL..."
+          TOKEN_URL="https://$OAUTH_HOST/oauth/token"
+          
+          # 1. Fetch the OAuth Token using the Runner's curl/jq
+          AUTH_RESPONSE=$(curl -s -X POST "$TOKEN_URL" \
+            -H "Content-Type: application/x-www-form-urlencoded" \
+            -d "grant_type=client_credentials&client_id=$CLIENT_ID&client_secret=$CLIENT_SECRET")
+          
+          # Use jq for reliable JSON parsing
+          TOKEN=$(echo "$AUTH_RESPONSE" | jq -r ".access_token")
+          
+          if [ "$TOKEN" == "null" ] || [ -z "$TOKEN" ]; then
+            echo "::error::Failed to retrieve access token."
+            echo "Raw Auth Response: $AUTH_RESPONSE"
+            exit 1
+          fi
+          
+          # 2. Fetch the Package List
+          echo "🔍 Fetching package list from tenant..."
+          API_URL="https://$TMN_HOST/api/v1/IntegrationPackages?\$format=json"
+          
+          PACKAGE_RESPONSE=$(curl -s -X GET "$API_URL" \
+            -H "Authorization: Bearer $TOKEN")
+          
+          # Use jq to get all 'Id' values and join them with spaces
+          PACKAGE_IDS=$(echo "$PACKAGE_RESPONSE" | jq -r ".d.results[].Id" | tr '\n' ' ')
+          
+          if [ -z "$PACKAGE_IDS" ]; then
+            echo "::warning::No packages found or API call failed. Check permissions."
+            exit 0
+          fi
+          
+          echo "✅ Found packages: $PACKAGE_IDS"
+          # Set the output variable for the next step to use
+          echo "packages=$PACKAGE_IDS" >> $GITHUB_OUTPUT
+ 
+      - name: Run FlashPipe inside Docker (Sync Packages)
+        env:
+          TMN_HOST: ${{ secrets.DEV_TMN_HOST }}
+          OAUTH_HOST: ${{ secrets.DEV_OAUTH_HOST }}
+          CLIENT_ID: ${{ secrets.DEV_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.DEV_CLIENT_SECRET }}
+        run: |
           docker run --rm \
             --user $(id -u):$(id -g) \
             -v "${GITHUB_WORKSPACE}:/workspace" \
@@ -29,50 +78,8 @@ jobs:
             -e CLIENT_SECRET="$CLIENT_SECRET" \
             engswee/flashpipe:latest \
             sh -c '
-              # --- Step 1: Generate Access Token ---
-              # We must assume FlashPipe needs to run the sync command to generate a token,
-              # but since we cannot get a direct "auth" command, we will try to use cURL
-              # with standard parameters, which may work if the necessary tools are present.
-              echo "🔑 Generating OAuth Token via cURL..."
-              
-              TOKEN_URL="https://$OAUTH_HOST/oauth/token"
-              
-              AUTH_RESPONSE=$(curl -s -X POST "$TOKEN_URL" \
-                -H "Content-Type: application/x-www-form-urlencoded" \
-                -d "grant_type=client_credentials&client_id=$CLIENT_ID&client_secret=$CLIENT_SECRET")
-              
-              # ATTENTION: This parsing assumes basic tools like awk/grep are available.
-              # This line extracts the access_token value from the JSON response.
-              TOKEN=$(echo "$AUTH_RESPONSE" | grep -o '"access_token":"[^"]*"' | awk -F'"' '{print $4}')
-              
-              if [ -z "$TOKEN" ]; then
-                echo "::error::Failed to retrieve access token. Check cURL and parsing syntax."
-                echo "Raw Auth Response: $AUTH_RESPONSE"
-                exit 1
-              fi
-              
-              # --- Step 2: Fetch and Parse Package List ---
-              echo "🔍 Fetching package list from tenant..."
-              API_URL="https://$TMN_HOST/api/v1/IntegrationPackages?\$format=json"
-              
-              # Fetch the package list using the token
-              PACKAGE_RESPONSE=$(curl -s -X GET "$API_URL" \
-                -H "Authorization: Bearer $TOKEN")
-              
-              # Parsing without jq: Split the JSON response on "Id" and extract the value.
-              # THIS IS EXTREMELY FRAGILE! The package IDs will be separated by spaces.
-              PACKAGE_IDS=$(echo "$PACKAGE_RESPONSE" | grep -o '"Id":"[^"]*"' | awk -F'"' '{print $4}')
-              
-              if [ -z "$PACKAGE_IDS" ]; then
-                echo "::warning::No packages found or API call failed. Check permissions."
-                echo "Raw Package Response: $PACKAGE_RESPONSE"
-                exit 0
-              fi
-              
-              echo "✅ Found packages: $PACKAGE_IDS"
-              
-              # --- Step 3: Iterate and Sync ---
-              for PKG in $PACKAGE_IDS; do
+              # Loop over the dynamically retrieved list
+              for PKG in ${{ steps.normalize.outputs.packages }}; do
                 echo "➡ Syncing $PKG..."
                 flashpipe sync \
                   --tmn-host "$TMN_HOST" \
@@ -90,7 +97,7 @@ jobs:
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git add .
-          git commit -m "Automated CPI package sync (dynamic list)" || echo "No changes"
+          git commit -m "Automated CPI package sync (dynamic list via API)" || echo "No changes"
           git push || true
 
 
