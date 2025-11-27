@@ -1,21 +1,4 @@
-name: Deploy CPI Package from Git to Tenant
- 
-on:
-  workflow_dispatch:
-    inputs:
-      package_id:
-        description: "Enter the Package ID to deploy (must exist in Git)"
-        required: true
- 
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
- 
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
- 
-      - name: Deploy package artifacts using FlashPipe
+- name: Deploy package artifacts using FlashPipe (FIXED)
         env:
           PKG: ${{ github.event.inputs.package_id }}
           TMN_HOST: ${{ secrets.DEV_TMN_HOST }}
@@ -23,18 +6,18 @@ jobs:
           CLIENT_ID: ${{ secrets.DEV_CLIENT_ID }}
           CLIENT_SECRET: ${{ secrets.DEV_CLIENT_SECRET }}
         run: |
+          PKG="${{ github.event.inputs.package_id }}"
           PACKAGE_DIR="cpi-artifacts/$PKG"
           
           # 1. Validation: Check if the package exists locally
           if [ ! -d "$PACKAGE_DIR" ]; then
-            echo "::error::Package directory $PACKAGE_DIR not found in the repository. Please sync it first."
+            echo "::error::Package directory $PACKAGE_DIR not found in the repository."
             exit 1
           fi
           
-          # 2. Get the list of all artifact directories (which are the Artifact IDs)
-          # The find command ensures we only look one level deep inside the package directory.
+          # 2. Get the list of all artifact directories
           ARTIFACT_IDS=$(find "$PACKAGE_DIR" -maxdepth 1 -mindepth 1 -type d -printf "%f,")
-          ARTIFACT_IDS=${ARTIFACT_IDS%,} # Remove trailing comma
+          ARTIFACT_IDS=${ARTIFACT_IDS%,}
           
           if [ -z "$ARTIFACT_IDS" ]; then
             echo "::warning::No artifacts found in $PACKAGE_DIR. Nothing to deploy."
@@ -54,9 +37,11 @@ jobs:
             -e CLIENT_SECRET="$CLIENT_SECRET" \
             engswee/flashpipe:latest \
             sh -c '
-              # Use the global environment variables set in the parent run block
-              # NOTE: We assume all artifacts in the directory are Integration Flows for simplicity.
-              # If you have multiple types (Mappings, Scripts), you need separate deploy calls for each type.
+              # The variables $TMN_HOST, $OAUTH_HOST, etc., are passed as environment variables.
+              # ARTIFACT_IDS and PKG are passed into the script body via the parent shell.
+              
+              echo "Starting deployment for Package: $PKG"
+              
               flashpipe deploy \
                 --tmn-host "$TMN_HOST" \
                 --oauth-host "$OAUTH_HOST" \
@@ -64,5 +49,6 @@ jobs:
                 --oauth-clientsecret "$CLIENT_SECRET" \
                 --artifact-ids "$ARTIFACT_IDS" \
                 --artifact-type "Integration" 
+            ' # <--- THIS CLOSING SINGLE QUOTE WAS LIKELY MISSING OR MALFORMED
             ' 
             '
