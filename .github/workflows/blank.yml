@@ -11,7 +11,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Fetch list of all packages from CPI
+      - name: Fetch all CPI packages (with correct XML namespaces!)
         id: fetch_packages
         env:
           TMN_HOST: ${{ secrets.DEV_TMN_HOST }}
@@ -19,8 +19,7 @@ jobs:
           CLIENT_ID: ${{ secrets.DEV_CLIENT_ID }}
           CLIENT_SECRET: ${{ secrets.DEV_CLIENT_SECRET }}
         run: |
-          echo "➡ Fetching CPI packages..."
-
+          echo "➡ Fetch token"
           TOKEN=$(curl -s --request POST \
             "$OAUTH_HOST/oauth/token" \
             --header "Content-Type: application/x-www-form-urlencoded" \
@@ -29,23 +28,19 @@ jobs:
             --data-urlencode "client_secret=$CLIENT_SECRET" \
             | jq -r '.access_token')
 
+          echo "➡ Fetch CPI packages..."
           curl -s \
             --header "Authorization: Bearer $TOKEN" \
             "$TMN_HOST/api/v1/IntegrationPackages" \
             -o packages.xml
 
-          echo "➡ Extracting package names..."
+          echo "➡ Extracting package IDs..."
+          PKGS=$(xmllint --xpath "//*[local-name()='Id']/text()" packages.xml | tr '\n' ' ')
+          echo "Detected packages: $PKGS"
 
-          PKGS=$(xmllint --xpath \
-            'declare namespace d="http://schemas.microsoft.com/ado/2007/08/dataservices"; 
-             declare namespace m="http://schemas.microsoft.com/ado/2007/08/dataservices/metadata";
-             //d:entry/d:content/m:properties/d:Id/text()' \
-            packages.xml 2>/dev/null | tr '\n' ' ')
-
-          echo "Extracted packages: $PKGS"
           echo "packages=$PKGS" >> $GITHUB_OUTPUT
 
-      - name: Backup all packages using FlashPipe
+      - name: Sync each package using FlashPipe
         env:
           TMN_HOST: ${{ secrets.DEV_TMN_HOST }}
           OAUTH_HOST: ${{ secrets.DEV_OAUTH_HOST }}
@@ -57,7 +52,8 @@ jobs:
             -w /workspace \
             engswee/flashpipe:latest sh -c '
               for PKG in ${{ steps.fetch_packages.outputs.packages }}; do
-                echo "➡ Syncing $PKG"
+                echo "➡ Syncing package: $PKG"
+                
                 flashpipe sync \
                   --tmn-host "$TMN_HOST" \
                   --oauth-host "$OAUTH_HOST" \
@@ -76,6 +72,7 @@ jobs:
           git add .
           git commit -m "Full CPI tenant backup" || echo "No changes"
           git push || true
+
 
 
 
