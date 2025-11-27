@@ -1,11 +1,8 @@
-name: Sync Multiple CPI Packages
+name: Sync ALL Dynamic CPI Packages
  
 on:
   workflow_dispatch:
-    inputs:
-      packages:
-        description: "Enter package names (comma or space separated)"
-        required: true
+    # No inputs needed - it finds all packages automatically
  
 jobs:
   sync:
@@ -15,20 +12,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
  
-      - name: Normalize package list
-        id: normalize
-        run: |
-          RAW="${{ github.event.inputs.packages }}"
-          CLEANED=$(echo "$RAW" | tr ',' ' ')
-          echo "packages=$CLEANED" >> $GITHUB_OUTPUT
- 
-      - name: Run FlashPipe inside Docker (with correct permissions!)
+      - name: Run FlashPipe Dynamic Sync
         env:
           TMN_HOST: ${{ secrets.DEV_TMN_HOST }}
           OAUTH_HOST: ${{ secrets.DEV_OAUTH_HOST }}
           CLIENT_ID: ${{ secrets.DEV_CLIENT_ID }}
           CLIENT_SECRET: ${{ secrets.DEV_CLIENT_SECRET }}
         run: |
+          # 1. Start the Docker container
           docker run --rm \
             --user $(id -u):$(id -g) \
             -v "${GITHUB_WORKSPACE}:/workspace" \
@@ -39,7 +30,37 @@ jobs:
             -e CLIENT_SECRET="$CLIENT_SECRET" \
             engswee/flashpipe:latest \
             sh -c '
-              for PKG in ${{ steps.normalize.outputs.packages }}; do
+              echo "🔑 Generating OAuth Token..."
+              # Use FlashPipe to generate and print the token. Capture the token output.
+              # Note: This is an assumption that flashpipe auth prints the token to stdout.
+              # Adjust the command if FlashPipe has a specific command to just get the token.
+              TOKEN=$(flashpipe auth --tmn-host "$TMN_HOST" --oauth-host "$OAUTH_HOST" --oauth-clientid "$CLIENT_ID" --oauth-clientsecret "$CLIENT_SECRET" | tail -n 1)
+
+              if [ -z "$TOKEN" ]; then
+                echo "::error::Failed to retrieve access token."
+                exit 1
+              fi
+              
+              echo "🔍 Fetching package list from tenant..."
+              # 2. Use the token to call the CPI OData API for IntegrationPackages
+              # The URL path for CPI OData package listing is /api/v1/IntegrationPackages
+              API_URL="https://$TMN_HOST/api/v1/IntegrationPackages?\$format=json"
+              
+              PACKAGE_IDS=$(
+                curl -s -X GET "$API_URL" \
+                -H "Authorization: Bearer $TOKEN" \
+                | jq -r ".d.results[].Id" \
+              )
+              
+              if [ -z "$PACKAGE_IDS" ]; then
+                echo "::warning::No packages found or API call failed."
+                exit 0
+              fi
+              
+              echo "✅ Found packages: $PACKAGE_IDS"
+              
+              # 3. Iterate and Sync all found package IDs
+              for PKG in $PACKAGE_IDS; do
                 echo "➡ Syncing $PKG..."
                 flashpipe sync \
                   --tmn-host "$TMN_HOST" \
@@ -57,9 +78,8 @@ jobs:
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git add .
-          git commit -m "Synced packages: ${{ github.event.inputs.packages }}" || echo "No changes"
+          git commit -m "Automated CPI package sync (dynamic list)" || echo "No changes"
           git push || true
-
 
 
 
