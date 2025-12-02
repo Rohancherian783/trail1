@@ -1,0 +1,72 @@
+name: Rollback CPI Package to Historical Commit
+ 
+on:
+  # This allows you to trigger the workflow manually and input the required values
+  workflow_dispatch:
+    inputs:
+      package_id:
+        description: "The ID of the package to be rolled back (e.g., 'make')"
+        required: true
+        type: string
+      commit_hash:
+        description: "The historical Git Commit Hash containing the content you want to restore (e.g., a6c3f9b...)"
+        required: true
+        type: string
+ 
+jobs:
+  rollback:
+    runs-on: ubuntu-latest
+    container:
+      image: engswee/flashpipe:latest
+ 
+    steps:
+      - name: Checkout Historical Content
+        uses: actions/checkout@v4
+        # CRUCIAL: This line tells GitHub to checkout the files as they existed
+        # when the specified commit hash was created (e.g., V1.0.1 content).
+        with:
+          ref: ${{ github.event.inputs.commit_hash }}
+          fetch-depth: 1 # Only fetch the single commit needed
+ 
+      - name: Deploy Historical Content to CPI Tenant
+        env:
+          TMN_HOST: ${{ secrets.DEV_TMN_HOST }}
+          OAUTH_HOST: ${{ secrets.DEV_OAUTH_HOST }}
+          CLIENT_ID: ${{ secrets.DEV_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.DEV_CLIENT_SECRET }}
+          PKG_ID: ${{ github.event.inputs.package_id }}
+        
+        run: |
+          PACKAGE_DIR="cpi-artifacts/$PKG_ID"
+          
+          echo "=========================================================="
+          echo "➡ Starting Rollback Deployment for Package: $PKG_ID"
+          echo "➡ Deploying content from Git Commit: ${{ github.event.inputs.commit_hash }}"
+
+          if [ ! -d "$PACKAGE_DIR" ]; then
+            echo "::error::Package directory $PACKAGE_DIR not found in the historical commit. Aborting."
+            exit 1
+          fi
+
+          echo "   Executing flashpipe sync (Git -> Tenant)..."
+          echo "   NOTE: This will create the next sequential version number in CPI."
+
+          # Execute the FlashPipe sync command (Git -> Tenant)
+          flashpipe sync \
+            --tmn-host "$TMN_HOST" \
+            --oauth-host "$OAUTH_HOST" \
+            --oauth-clientid "$CLIENT_ID" \
+            --oauth-clientsecret "$CLIENT_SECRET" \
+            --package-id "$PKG_ID" \
+            --dir-artifacts "$PACKAGE_DIR" \
+            --sync-package-details \
+            --target "tenant"
+            
+          if [ $? -ne 0 ]; then
+              echo "::error::Rollback Deployment FAILED for package $PKG_ID."
+              exit 1
+          fi
+          
+          echo "✅ Rollback SUCCESSFUL."
+          echo "The package $PKG_ID now contains the historical content."
+          echo "Check CPI. It should have a new version number (e.g., V1.0.4) containing the V1.0.1 content."
