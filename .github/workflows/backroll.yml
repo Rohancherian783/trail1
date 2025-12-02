@@ -1,0 +1,98 @@
+name: Restore Full History of a CPI Package
+ 
+on:
+  workflow_dispatch:
+    inputs:
+      package_id:
+        description: "The ID of the package whose full history you want to restore (e.g., 'TEST_PACKAGE')."
+        required: true
+        type: string
+ 
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    container:
+      image: engswee/flashpipe:latest
+ 
+    steps:
+      - name: Checkout repository (Full History)
+        uses: actions/checkout@v4
+        # Fetching all history is crucial for finding all commits
+        with:
+          fetch-depth: 0 
+ 
+      - name: Find and Order Historical Commits
+        id: commits
+        env:
+          PKG_ID: ${{ github.event.inputs.package_id }}
+        run: |
+          echo "🔍 Searching for historical sync commits for package: $PKG_ID"
+          
+          # 1. Find all commit hashes that touched the package directory AND have a sync message
+          # This filters the Git history to only show commits that modified the specific package folder.
+          # It then sorts them oldest first and extracts the hash and date.
+          
+          # NOTE: The commit message must match the one from your sync job: "Automated CPI package sync (dynamic list via API)"
+          COMMITS_LIST=$(git log --pretty=format:'%h %ad' --date=iso --reverse --grep "Automated CPI package sync" -- $GITHUB_WORKSPACE/cpi-artifacts/$PKG_ID | awk '{print $1}')
+
+          if [ -z "$COMMITS_LIST" ]; then
+            echo "::error::No historical sync commits found for package '$PKG_ID'. Aborting restoration."
+            exit 1
+          fi
+          
+          echo "✅ Found historical commits (oldest to newest): $COMMITS_LIST"
+          # Set the list of commit hashes for the next step to loop through
+          echo "commit_hashes=$COMMITS_LIST" >> $GITHUB_OUTPUT
+ 
+      - name: Loop and Deploy Each Historical Version
+        env:
+          TMN_HOST: ${{ secrets.DEV_TMN_HOST }}
+          OAUTH_HOST: ${{ secrets.DEV_OAUTH_HOST }}
+          CLIENT_ID: ${{ secrets.DEV_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.DEV_CLIENT_SECRET }}
+          PKG_ID: ${{ github.event.inputs.package_id }}
+          COMMITS_TO_DEPLOY: ${{ steps.commits.outputs.commit_hashes }}
+        
+        run: |
+          PACKAGE_DIR="cpi-artifacts/$PKG_ID"
+          EXIT_CODE=0
+          
+          # Loop through the commits, deploying oldest first
+          for COMMIT_HASH in $COMMITS_TO_DEPLOY; do
+            echo "=========================================================="
+            echo "➡ RESTORING HASH $COMMIT_HASH: Deploying content to CPI."
+            
+            # Reset the working directory to the state of this specific historical commit
+            # Using 'checkout-index' and 'read-tree' is safer than full checkout for this loop
+            git checkout-index -f -a --prefix=temp_checkout/
+            git read-tree $COMMIT_HASH
+            git checkout-index -f -a --prefix=$GITHUB_WORKSPACE/
+            
+            # The working directory now contains the historical files for this single commit
+            
+            if [ ! -d "$PACKAGE_DIR" ]; then
+              echo "::error::Package directory $PACKAGE_DIR not found in commit $COMMIT_HASH. Skipping."
+              continue
+            fi
+
+            # Execute the FlashPipe sync command (Git -> Tenant)
+            flashpipe sync \
+              --tmn-host "$TMN_HOST" \
+              --oauth-host "$OAUTH_HOST" \
+              --oauth-clientid "$CLIENT_ID" \
+              --oauth-clientsecret "$CLIENT_SECRET" \
+              --package-id "$PKG_ID" \
+              --dir-artifacts "$PACKAGE_DIR" \
+              --sync-package-details \
+              --target "tenant"
+              
+            if [ $? -ne 0 ]; then
+                echo "::error::Deployment FAILED for hash $COMMIT_HASH. Stopping history restoration."
+                EXIT_CODE=1
+                break
+            fi
+            
+            echo "✅ Deployment SUCCESSFUL. CPI should now show the next sequential version."
+          done
+          
+          exit $EXIT_CODE
