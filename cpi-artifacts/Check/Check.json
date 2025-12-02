@@ -1,0 +1,10 @@
+{
+  "d": {
+    "Id": "Check",
+    "Name": "Check",
+    "Description": "\u003cp\u003e\u003c/p\u003e",
+    "ShortText": "check",
+    "Version": "",
+    "Mode": "EDIT_ALLOWED"
+  }
+}
