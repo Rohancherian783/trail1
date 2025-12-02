@@ -19,12 +19,10 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0 
-          # Fix for the ownership issue inside the container
           persist-credentials: true
  
       - name: Configure Git Safe Directory
         run: |
-          # This resolves the 'detected dubious ownership' error from the previous run.
           git config --global --add safe.directory /__w/trail1/trail1
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
  
@@ -37,19 +35,19 @@ jobs:
           
           PACKAGE_PATH="cpi-artifacts/$PKG_ID"
 
-          # CRITICAL FIX: Searching for the exact user-defined commit message: "Sync repo from tenant"
-          # This finds all commits that modified the package path and have the sync message, 
-          # sorted from oldest to newest.
-          COMMITS_LIST=$(git log --pretty=format:'%H' --reverse --grep "Sync repo from tenant" -- "$PACKAGE_PATH")
-
-          if [ -z "$COMMITS_LIST" ]; then
-            echo "::error::No historical sync commits found for package '$PKG_ID'."
-            echo "::warning::Make sure your sync job committed with the exact message: 'Sync repo from tenant'"
-            echo "::warning::Checking package path: $PACKAGE_PATH"
+          # 1. Get the list of commits, each on a new line
+          COMMITS_LINES=$(git log --pretty=format:'%H' --reverse --grep "Sync repo from tenant" -- "$PACKAGE_PATH")
+          
+          if [ -z "$COMMITS_LINES" ]; then
+            echo "::error::No historical sync commits found for package '$PKG_ID'. Aborting restoration."
             exit 1
           fi
           
+          # 2. CRITICAL FIX: Convert the multi-line output into a single, space-separated string.
+          COMMITS_LIST=$(echo "$COMMITS_LINES" | tr '\n' ' ')
+
           echo "✅ Found historical commits (oldest to newest): $COMMITS_LIST"
+          # 3. Pass the single-line string to the output variable
           echo "commit_hashes=$COMMITS_LIST" >> $GITHUB_OUTPUT
  
       - name: Loop and Deploy Each Historical Version
@@ -70,7 +68,6 @@ jobs:
             echo "➡ RESTORING HASH $COMMIT_HASH: Deploying content to CPI."
             
             # 1. Restore the historical files from the commit into the working directory
-            # The '--' ensures only the files in this directory are checked out.
             git checkout $COMMIT_HASH -- "$PACKAGE_DIR"
 
             if [ ! -d "$PACKAGE_DIR" ]; then
@@ -96,7 +93,6 @@ jobs:
             fi
             
             # 3. Clean up the checkout before the next loop iteration (Important!)
-            # This ensures the next checkout starts from a clean HEAD state.
             git checkout HEAD -- "$PACKAGE_DIR"
             echo "✅ Deployment SUCCESSFUL. CPI should now show the next sequential version."
           done
