@@ -17,9 +17,16 @@ jobs:
     steps:
       - name: Checkout repository (Full History)
         uses: actions/checkout@v4
-        # Fetching all history is crucial for finding all commits
         with:
           fetch-depth: 0 
+          # Fix for the ownership issue inside the container
+          persist-credentials: true
+ 
+      - name: Configure Git Safe Directory
+        run: |
+          # This resolves the 'detected dubious ownership' error from the previous run.
+          git config --global --add safe.directory /__w/trail1/trail1
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
  
       - name: Find and Order Historical Commits
         id: commits
@@ -28,20 +35,21 @@ jobs:
         run: |
           echo "🔍 Searching for historical sync commits for package: $PKG_ID"
           
-          # 1. Find all commit hashes that touched the package directory AND have a sync message
-          # This filters the Git history to only show commits that modified the specific package folder.
-          # It then sorts them oldest first and extracts the hash and date.
-          
-          # NOTE: The commit message must match the one from your sync job: "Automated CPI package sync (dynamic list via API)"
-          COMMITS_LIST=$(git log --pretty=format:'%h %ad' --date=iso --reverse --grep "Automated CPI package sync" -- $GITHUB_WORKSPACE/cpi-artifacts/$PKG_ID | awk '{print $1}')
+          PACKAGE_PATH="cpi-artifacts/$PKG_ID"
+
+          # CRITICAL FIX: Searching for the exact user-defined commit message: "Sync repo from tenant"
+          # This finds all commits that modified the package path and have the sync message, 
+          # sorted from oldest to newest.
+          COMMITS_LIST=$(git log --pretty=format:'%H' --reverse --grep "Sync repo from tenant" -- "$PACKAGE_PATH")
 
           if [ -z "$COMMITS_LIST" ]; then
-            echo "::error::No historical sync commits found for package '$PKG_ID'. Aborting restoration."
+            echo "::error::No historical sync commits found for package '$PKG_ID'."
+            echo "::warning::Make sure your sync job committed with the exact message: 'Sync repo from tenant'"
+            echo "::warning::Checking package path: $PACKAGE_PATH"
             exit 1
           fi
           
           echo "✅ Found historical commits (oldest to newest): $COMMITS_LIST"
-          # Set the list of commit hashes for the next step to loop through
           echo "commit_hashes=$COMMITS_LIST" >> $GITHUB_OUTPUT
  
       - name: Loop and Deploy Each Historical Version
@@ -57,25 +65,20 @@ jobs:
           PACKAGE_DIR="cpi-artifacts/$PKG_ID"
           EXIT_CODE=0
           
-          # Loop through the commits, deploying oldest first
           for COMMIT_HASH in $COMMITS_TO_DEPLOY; do
             echo "=========================================================="
             echo "➡ RESTORING HASH $COMMIT_HASH: Deploying content to CPI."
             
-            # Reset the working directory to the state of this specific historical commit
-            # Using 'checkout-index' and 'read-tree' is safer than full checkout for this loop
-            git checkout-index -f -a --prefix=temp_checkout/
-            git read-tree $COMMIT_HASH
-            git checkout-index -f -a --prefix=$GITHUB_WORKSPACE/
-            
-            # The working directory now contains the historical files for this single commit
-            
+            # 1. Restore the historical files from the commit into the working directory
+            # The '--' ensures only the files in this directory are checked out.
+            git checkout $COMMIT_HASH -- "$PACKAGE_DIR"
+
             if [ ! -d "$PACKAGE_DIR" ]; then
               echo "::error::Package directory $PACKAGE_DIR not found in commit $COMMIT_HASH. Skipping."
               continue
             fi
-
-            # Execute the FlashPipe sync command (Git -> Tenant)
+            
+            # 2. Deployment using FlashPipe
             flashpipe sync \
               --tmn-host "$TMN_HOST" \
               --oauth-host "$OAUTH_HOST" \
@@ -92,6 +95,9 @@ jobs:
                 break
             fi
             
+            # 3. Clean up the checkout before the next loop iteration (Important!)
+            # This ensures the next checkout starts from a clean HEAD state.
+            git checkout HEAD -- "$PACKAGE_DIR"
             echo "✅ Deployment SUCCESSFUL. CPI should now show the next sequential version."
           done
           
