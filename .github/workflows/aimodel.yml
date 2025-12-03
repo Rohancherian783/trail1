@@ -16,10 +16,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         
-      - name: Install Dependencies (jq and base64)
+      - name: Install Dependencies (jq only)
+        # We removed 'base64' as it's part of core utilities and not a separate package.
         run: |
           sudo apt-get update
-          sudo apt-get install -y jq base64
+          sudo apt-get install -y jq
  
       - name: Generate Documentation via OpenAI API
         env:
@@ -41,7 +42,6 @@ jobs:
           echo "🔍 Analyzing ALL iFlows inside Package: $PKG_ID"
           
           # --- Detailed System Prompt for 11-Point Structure ---
-          # This enforces the detailed structure you requested for technical analysis.
           SYSTEM_PROMPT="You are a professional SAP CPI Technical Writer. Your sole task is to analyze the provided integration flow (iFlow) XML content and generate a comprehensive, structured technical documentation. The output MUST strictly follow the 11-point structure listed below, using Markdown headings (e.g., '## 1. High-Level Architecture').
           
           The 11 mandatory sections are:
@@ -130,11 +130,9 @@ jobs:
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           
-          # Add all generated Documentation_README.md files within the specific package
           PKG_ID="${{ github.event.inputs.package_id }}"
           git add "cpi-artifacts/$PKG_ID/*/Documentation_README.md"
           
-          # Check if any documentation files were modified/added
           if git diff --cached --quiet; then
               echo "No changes detected in the generated documentation files. Skipping commit."
           else
