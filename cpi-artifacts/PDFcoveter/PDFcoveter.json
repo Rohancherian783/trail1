@@ -1,0 +1,10 @@
+{
+  "d": {
+    "Id": "PDFcoveter",
+    "Name": "PDF convert",
+    "Description": "\u003cp\u003e\u003c/p\u003e",
+    "ShortText": "Mail to pdf",
+    "Version": "1.0.0",
+    "Mode": "EDIT_ALLOWED"
+  }
+}
