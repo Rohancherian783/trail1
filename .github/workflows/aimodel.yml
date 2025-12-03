@@ -17,12 +17,12 @@ jobs:
         uses: actions/checkout@v4
         
       - name: Install Dependencies (jq only)
-        # We removed 'base64' as it's part of core utilities and not a separate package.
         run: |
           sudo apt-get update
           sudo apt-get install -y jq
  
       - name: Generate Documentation via OpenAI API
+        id: documentation_step
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }} 
           PKG_ID: ${{ github.event.inputs.package_id }}
@@ -36,12 +36,14 @@ jobs:
           if [ ! -d "$PKG_DIR" ]; then
             echo "::error::Package directory not found at: $PKG_DIR"
             echo "::error::Please check if Package ID ('$PKG_ID') is correct and exists in your repository."
+            # Set a failure flag for the next step to check
+            echo "docs_generated=false" >> $GITHUB_OUTPUT
             exit 1
           fi
 
           echo "🔍 Analyzing ALL iFlows inside Package: $PKG_ID"
           
-          # --- Detailed System Prompt for 11-Point Structure ---
+          # --- Detailed System Prompt (Unchanged) ---
           SYSTEM_PROMPT="You are a professional SAP CPI Technical Writer. Your sole task is to analyze the provided integration flow (iFlow) XML content and generate a comprehensive, structured technical documentation. The output MUST strictly follow the 11-point structure listed below, using Markdown headings (e.g., '## 1. High-Level Architecture').
           
           The 11 mandatory sections are:
@@ -62,9 +64,12 @@ jobs:
           
           if [ -z "$IFLOWS" ]; then
             echo "::warning::No iFlows (folders with iFlowContent.xml) found in package '$PKG_ID'. Skipping documentation."
+            echo "docs_generated=false" >> $GITHUB_OUTPUT
             exit 0
           fi
           
+          SUCCESS_COUNT=0
+
           # Loop through each individual iFlow found
           for IFLOW_PATH in $IFLOWS; do
             IFLOW_NAME=$(basename "$IFLOW_PATH")
@@ -74,11 +79,10 @@ jobs:
             echo "--------------------------------------------------------"
             echo "  Analyzing iFlow: $IFLOW_NAME"
             
-            # --- API Call Logic ---
+            # --- API Call Logic (Unchanged) ---
             XML_CONTENT=$(cat "$INPUT_FILE")
             USER_QUERY="Analyze the following SAP CPI iFlow XML content and generate the full 11-section documentation for it: \n\n\`\`\`xml\n$XML_CONTENT\n\`\`\`"
             
-            # Construct the JSON payload for OpenAI
             PAYLOAD=$(jq -n \
               --arg system "$SYSTEM_PROMPT" \
               --arg query "$USER_QUERY" \
@@ -105,10 +109,9 @@ jobs:
 
               if [ "$GENERATED_TEXT" != "null" ] && [ -n "$GENERATED_TEXT" ]; then
                 echo "  ✅ Documentation generated successfully."
-                
-                # Save the generated Markdown content
                 echo "$GENERATED_TEXT" > "$OUTPUT_FILE"
                 echo "  💾 Saved documentation to $OUTPUT_FILE"
+                SUCCESS_COUNT=$((SUCCESS_COUNT + 1))
                 break
               else
                 ERROR_MSG=$(echo "$API_RESPONSE" | jq -r ".error.message // \"Unknown error\"")
@@ -124,17 +127,32 @@ jobs:
             fi
 
           done # End of IFLOW loop
+          
+          # Set flag based on whether any documentation was successfully created
+          if [ $SUCCESS_COUNT -gt 0 ]; then
+             echo "docs_generated=true" >> $GITHUB_OUTPUT
+             echo "Total $SUCCESS_COUNT iFlows documented."
+          else
+             echo "docs_generated=false" >> $GITHUB_OUTPUT
+             echo "No iFlows were successfully documented."
+          fi
+          
  
       - name: Commit Generated Documentation
+        # Only run this step if the previous step successfully generated at least one doc
+        if: steps.documentation_step.outputs.docs_generated == 'true'
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           
           PKG_ID="${{ github.event.inputs.package_id }}"
+          
+          # Use --force (or -f) flag on git add to ignore errors if the glob pattern matches nothing (safer, though conditional check is better)
+          # We use the existing logic but ensure the previous step guarantees success.
           git add "cpi-artifacts/$PKG_ID/*/Documentation_README.md"
           
           if git diff --cached --quiet; then
-              echo "No changes detected in the generated documentation files. Skipping commit."
+              echo "No meaningful changes detected in the generated documentation files. Skipping commit."
           else
               git commit -m "🤖 DOCS: Generated documentation for all iFlows in package: $PKG_ID (GPT-4o mini)."
               git push
