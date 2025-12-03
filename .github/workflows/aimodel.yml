@@ -1,10 +1,10 @@
-name: 🤖 Generate Documentation for ALL iFlows in ONE Package
+name: 🤖 Generate Documentation for ALL Artifacts in ONE Package
  
 on:
   workflow_dispatch:
     inputs:
       package_id:
-        description: "The ID of the CPI Integration Package (e.g., 'TEST_PACKAGE')."
+        description: "The ID of the CPI Integration Package (e.g., 'PDFcoveter')."
         required: true
         type: string
 
@@ -35,54 +35,68 @@ jobs:
           
           if [ ! -d "$PKG_DIR" ]; then
             echo "::error::Package directory not found at: $PKG_DIR"
-            echo "::error::Please check if Package ID ('$PKG_ID') is correct and exists in your repository."
-            # Set a failure flag for the next step to check
+            echo "::error::Please check if Package ID ('$PKG_ID') is correct."
             echo "docs_generated=false" >> $GITHUB_OUTPUT
             exit 1
           fi
 
-          echo "🔍 Analyzing ALL iFlows inside Package: $PKG_ID"
+          echo "🔍 Analyzing ALL content inside Package: $PKG_ID"
           
-          # --- Detailed System Prompt (Unchanged) ---
-          SYSTEM_PROMPT="You are a professional SAP CPI Technical Writer. Your sole task is to analyze the provided integration flow (iFlow) XML content and generate a comprehensive, structured technical documentation. The output MUST strictly follow the 11-point structure listed below, using Markdown headings (e.g., '## 1. High-Level Architecture').
+          # --- Prompt Definitions ---
+          IFLOW_SYSTEM_PROMPT="You are a professional SAP CPI Technical Writer. Analyze the iFlow XML and generate structured documentation following 11 mandatory sections: 1. High-level architecture, 2. Purpose, 3. Sender/Receiver, 4. Adapter types, 5. Step-by-step flow, 6. Mapping logic, 7. Groovy script explanations, 8. Error handling, 9. Security/authentication, 10. Deployment notes, 11. ASCII message flow diagram. Use Markdown."
           
-          The 11 mandatory sections are:
-          1. High-level architecture
-          2. Purpose of each iFlow
-          3. Sender/Receiver systems
-          4. Adapter types used
-          5. Step-by-step flow explanation
-          6. Mapping logic summary
-          7. Groovy script explanations
-          8. Error handling
-          9. Security/authentication
-          10. Deployment notes
-          11. ASCII message flow diagram (Use Markdown code blocks for the diagram)."
+          SCRIPT_SYSTEM_PROMPT="You are an expert CPI developer. Analyze the Groovy script code. Document the script in Markdown with sections for: 1. Purpose, 2. Input/Output Headers, 3. Code Summary and Logic, and 4. Recommendations/Best Practices."
           
-          # Find all iFlows (folders containing an iFlowContent.xml) within the package
-          IFLOWS=$(find "$PKG_DIR" -type f -name 'iFlowContent.xml' -exec dirname {} \;)
-          
-          if [ -z "$IFLOWS" ]; then
-            echo "::warning::No iFlows (folders with iFlowContent.xml) found in package '$PKG_ID'. Skipping documentation."
-            echo "docs_generated=false" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-          
-          SUCCESS_COUNT=0
+          XSLT_SYSTEM_PROMPT="You are a data mapping expert. Analyze the XSLT code. Document the transformation in Markdown with sections for: 1. Purpose, 2. Source/Target Structure Notes, 3. Key Transformation Rules, and 4. Known Limitations."
 
-          # Loop through each individual iFlow found
-          for IFLOW_PATH in $IFLOWS; do
-            IFLOW_NAME=$(basename "$IFLOW_PATH")
-            INPUT_FILE="$IFLOW_PATH/iFlowContent.xml"
-            OUTPUT_FILE="$IFLOW_PATH/Documentation_README.md"
+          SUCCESS_COUNT=0
+          
+          # Find all potentially valuable files (iFlow XML, Groovy Scripts, XSLT)
+          # We use a single find command to locate all target files.
+          FILES_TO_ANALYZE=$(find "$PKG_DIR" -type f \( -name 'iFlowContent.xml' -o -name '*.groovy' -o -name '*.xslt' \) -print)
+
+          if [ -z "$FILES_TO_ANALYZE" ]; then
+              echo "::warning::No supported files (iFlowContent.xml, *.groovy, *.xslt) found in package '$PKG_ID'."
+              echo "docs_generated=false" >> $GITHUB_OUTPUT
+              exit 0
+          fi
+
+          # Loop through each file found
+          for INPUT_FILE in $FILES_TO_ANALYZE; do
+            FILE_NAME=$(basename "$INPUT_FILE")
+            DIR_PATH=$(dirname "$INPUT_FILE")
             
             echo "--------------------------------------------------------"
-            echo "  Analyzing iFlow: $IFLOW_NAME"
+            echo "  Processing File: $INPUT_FILE"
+
+            # 1. Determine artifact type and set prompt/output file name
+            case "$FILE_NAME" in
+              iFlowContent.xml)
+                ARTIFACT_NAME=$(basename "$DIR_PATH")
+                OUTPUT_FILE="$DIR_PATH/Documentation_README.md"
+                SYSTEM_PROMPT="$IFLOW_SYSTEM_PROMPT"
+                USER_QUERY="Analyze the following SAP CPI iFlow XML content and generate the full 11-section documentation for it: \n\n\`\`\`xml\n$(cat "$INPUT_FILE")\n\`\`\`"
+                ;;
+              *.groovy)
+                ARTIFACT_NAME="$FILE_NAME"
+                OUTPUT_FILE="$DIR_PATH/${FILE_NAME}.md"
+                SYSTEM_PROMPT="$SCRIPT_SYSTEM_PROMPT"
+                USER_QUERY="Analyze the following Groovy script from CPI and generate technical documentation for it: \n\n\`\`\`groovy\n$(cat "$INPUT_FILE")\n\`\`\`"
+                ;;
+              *.xslt)
+                ARTIFACT_NAME="$FILE_NAME"
+                OUTPUT_FILE="$DIR_PATH/${FILE_NAME}.md"
+                SYSTEM_PROMPT="$XSLT_SYSTEM_PROMPT"
+                USER_QUERY="Analyze the following XSLT mapping from CPI and generate technical documentation for it: \n\n\`\`\`xml\n$(cat "$INPUT_FILE")\n\`\`\`"
+                ;;
+              *)
+                # Should not happen due to find command, but good practice
+                echo "  Skipping unsupported file type: $FILE_NAME"
+                continue
+                ;;
+            esac
             
-            # --- API Call Logic (Unchanged) ---
-            XML_CONTENT=$(cat "$INPUT_FILE")
-            USER_QUERY="Analyze the following SAP CPI iFlow XML content and generate the full 11-section documentation for it: \n\n\`\`\`xml\n$XML_CONTENT\n\`\`\`"
-            
+            # --- API Call Logic ---
             PAYLOAD=$(jq -n \
               --arg system "$SYSTEM_PROMPT" \
               --arg query "$USER_QUERY" \
@@ -117,29 +131,27 @@ jobs:
                 ERROR_MSG=$(echo "$API_RESPONSE" | jq -r ".error.message // \"Unknown error\"")
                 RETRY_COUNT=$((RETRY_COUNT + 1))
                 DELAY=$((2**RETRY_COUNT))
-                echo "  ⚠️ API call failed: $ERROR_MSG (Attempt $RETRY_COUNT/$MAX_RETRIES). Retrying in $DELAY seconds..."
+                echo "  ⚠️ API call failed for $ARTIFACT_NAME: $ERROR_MSG (Attempt $RETRY_COUNT/$MAX_RETRIES). Retrying in $DELAY seconds..."
                 sleep "$DELAY"
               fi
             done
             
             if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
-              echo "  ❌ Failed to generate documentation after $MAX_RETRIES attempts for $IFLOW_NAME. Skipping to next iFlow."
+              echo "  ❌ Failed to generate documentation after $MAX_RETRIES attempts for $ARTIFACT_NAME."
             fi
 
-          done # End of IFLOW loop
+          done # End of FILE loop
           
-          # Set flag based on whether any documentation was successfully created
           if [ $SUCCESS_COUNT -gt 0 ]; then
              echo "docs_generated=true" >> $GITHUB_OUTPUT
-             echo "Total $SUCCESS_COUNT iFlows documented."
+             echo "Total $SUCCESS_COUNT artifacts documented."
           else
              echo "docs_generated=false" >> $GITHUB_OUTPUT
-             echo "No iFlows were successfully documented."
+             echo "No artifacts were successfully documented."
           fi
           
  
       - name: Commit Generated Documentation
-        # Only run this step if the previous step successfully generated at least one doc
         if: steps.documentation_step.outputs.docs_generated == 'true'
         run: |
           git config user.name "github-actions"
@@ -147,14 +159,14 @@ jobs:
           
           PKG_ID="${{ github.event.inputs.package_id }}"
           
-          # Use --force (or -f) flag on git add to ignore errors if the glob pattern matches nothing (safer, though conditional check is better)
-          # We use the existing logic but ensure the previous step guarantees success.
+          # Add the main iFlow READMEs and any generated .md files for scripts/mappings
           git add "cpi-artifacts/$PKG_ID/*/Documentation_README.md"
+          git add "cpi-artifacts/$PKG_ID/**/*.md"
           
           if git diff --cached --quiet; then
-              echo "No meaningful changes detected in the generated documentation files. Skipping commit."
+              echo "No changes detected in the generated documentation files. Skipping commit."
           else
-              git commit -m "🤖 DOCS: Generated documentation for all iFlows in package: $PKG_ID (GPT-4o mini)."
+              git commit -m "🤖 DOCS: Generated documentation for $SUCCESS_COUNT artifacts in package: $PKG_ID (GPT-4o mini)."
               git push
               echo "✅ Documentation committed and pushed to repository for package $PKG_ID."
           fi
