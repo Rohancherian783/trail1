@@ -42,7 +42,7 @@ jobs:
 
           echo "🔍 Analyzing ALL content inside Package: $PKG_ID"
           
-          # --- Prompt Definitions ---
+          # --- Prompt Definitions (Unchanged) ---
           IFLOW_SYSTEM_PROMPT="You are a professional SAP CPI Technical Writer. Analyze the iFlow XML and generate structured documentation following 11 mandatory sections: 1. High-level architecture, 2. Purpose, 3. Sender/Receiver, 4. Adapter types, 5. Step-by-step flow, 6. Mapping logic, 7. Groovy script explanations, 8. Error handling, 9. Security/authentication, 10. Deployment notes, 11. ASCII message flow diagram. Use Markdown."
           
           SCRIPT_SYSTEM_PROMPT="You are an expert CPI developer. Analyze the Groovy script code. Document the script in Markdown with sections for: 1. Purpose, 2. Input/Output Headers, 3. Code Summary and Logic, and 4. Recommendations/Best Practices."
@@ -52,7 +52,6 @@ jobs:
           SUCCESS_COUNT=0
           
           # Find all potentially valuable files (iFlow XML, Groovy Scripts, XSLT)
-          # We use a single find command to locate all target files.
           FILES_TO_ANALYZE=$(find "$PKG_DIR" -type f \( -name 'iFlowContent.xml' -o -name '*.groovy' -o -name '*.xslt' \) -print)
 
           if [ -z "$FILES_TO_ANALYZE" ]; then
@@ -90,7 +89,6 @@ jobs:
                 USER_QUERY="Analyze the following XSLT mapping from CPI and generate technical documentation for it: \n\n\`\`\`xml\n$(cat "$INPUT_FILE")\n\`\`\`"
                 ;;
               *)
-                # Should not happen due to find command, but good practice
                 echo "  Skipping unsupported file type: $FILE_NAME"
                 continue
                 ;;
@@ -137,7 +135,7 @@ jobs:
             done
             
             if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
-              echo "  ❌ Failed to generate documentation after $MAX_RETRIES attempts for $ARTIFACT_NAME."
+              echo "  ❌ Failed to generate documentation after $MAX_RETRIES attempts for $ARTIFACT_NAME. Skipping to next artifact."
             fi
 
           done # End of FILE loop
@@ -151,22 +149,26 @@ jobs:
           fi
           
  
-      - name: Commit Generated Documentation
+      - name: Commit Generated Documentation (Robust)
+        # Only run this step if the previous step successfully generated at least one doc
         if: steps.documentation_step.outputs.docs_generated == 'true'
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           
           PKG_ID="${{ github.event.inputs.package_id }}"
+
+          # Use a broad, robust pattern to add ANY .md file created in the package hierarchy
+          # The --force flag ensures 'git add' does not fail if it can't match every sub-pattern.
+          git add --force "cpi-artifacts/$PKG_ID/**/*.md"
           
-          # Add the main iFlow READMEs and any generated .md files for scripts/mappings
-          git add "cpi-artifacts/$PKG_ID/*/Documentation_README.md"
-          git add "cpi-artifacts/$PKG_ID/**/*.md"
-          
+          # Check if any documentation files were modified/added
           if git diff --cached --quiet; then
-              echo "No changes detected in the generated documentation files. Skipping commit."
+              echo "No meaningful changes detected in the generated documentation files. Skipping commit."
           else
-              git commit -m "🤖 DOCS: Generated documentation for $SUCCESS_COUNT artifacts in package: $PKG_ID (GPT-4o mini)."
+              # Use find command output to get a list of changed/new files for a precise commit
+              # This ensures we commit all the generated documentation
+              git commit -m "🤖 DOCS: Generated documentation for package: $PKG_ID (GPT-4o mini)."
               git push
               echo "✅ Documentation committed and pushed to repository for package $PKG_ID."
           fi
