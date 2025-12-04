@@ -70,13 +70,12 @@ jobs:
             # Dynamically build the list of packages needed
             PACKAGES_TO_INSTALL=""
             
-            # 🚨 FIX: Using standard shell concatenation (var="\$var addition") 🚨
             if ! command -v jq >/dev/null 2>&1; then PACKAGES_TO_INSTALL="$PACKAGES_TO_INSTALL jq"; fi
             if ! command -v curl >/dev/null 2>&1; then PACKAGES_TO_INSTALL="$PACKAGES_TO_INSTALL curl"; fi
             
             # 1. Try APT (Debian/Ubuntu)
             if command -v apt-get >/dev/null 2>&1; then
-              echo "Using apt-get to install:$PACKAGES_TO_INSTALL"
+              echo "Using apt-get to install:$PACKAGES_TO-INSTALL"
               apt-get update && apt-get install -y $PACKAGES_TO_INSTALL
               
             # 2. Try APK (Alpine Linux)
@@ -135,17 +134,22 @@ jobs:
             echo -e "\n--- END ARTIFACT: $INPUT_FILE ---\n" >> "$TEMP_CONTENT_FILE"
           done
 
-          # Read the entire content from the temporary file into the variable
-          FULL_ARTIFACT_CONTENT=$(cat "$TEMP_CONTENT_FILE")
+          # --- CRITICAL FIX: Clean the content before use ---
+          # Read, remove carriage returns (\r), and delete non-printable control characters 
+          # that break JSON parsing (excluding basic tabs/newlines, which jq can handle when using --arg)
+          FULL_ARTIFACT_CONTENT=$(
+            cat "$TEMP_CONTENT_FILE" | \
+            tr -d '\r' | \
+            tr -d '\000-\010\013\014\016-\037'
+          )
+          # --- End Cleaning ---
           
           # Build the user query text
-          # Note: The single quotes around the variable expansion below are CRITICAL 
-          # to preserve newlines and prevent premature shell expansion issues.
           USER_QUERY_TEXT='Synthesize a single, consolidated technical report following the 10 mandatory sections from the entire set of package artifacts provided below. \n\n```text\n'"$FULL_ARTIFACT_CONTENT"'\n```'
           
           # --- API Execution ---
-          # 🚨 FIX V2: Passing the user query text via an explicit --arg to ensure proper JSON escaping by jq.
-          
+          # Using jq --arg ensures the cleaned multi-line string is properly escaped by jq 
+          # when constructing the final JSON payload.
           PAYLOAD=$(jq -n \
             --arg system "$SYSTEM_PROMPT" \
             --arg model "gpt-4o-mini" \
@@ -154,7 +158,6 @@ jobs:
               model: $model,
               messages: [
                 {role: "system", content: $system},
-                # Referencing the explicit argument ensures the string is correctly escaped and injected.
                 {role: "user", content: $user_content} 
               ],
               temperature: 0.1
