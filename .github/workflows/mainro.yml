@@ -92,8 +92,7 @@ jobs:
 
         run: |
           # The entire documentation and sync process runs inside a Docker container
-          # which has 'flashpipe' and the necessary shell tools (jq, curl) pre-installed 
-          # by the previous step.
+          # CRITICAL FIX: Changed 'sh -c' to 'bash -c' for better subshell command support.
           docker run --rm \
             --user $(id -u):$(id -g) \
             -v "${GITHUB_WORKSPACE}:/workspace" \
@@ -104,7 +103,7 @@ jobs:
             -e CLIENT_SECRET="$CLIENT_SECRET" \
             -e OPENAI_API_KEY="$OPENAI_API_KEY" \
             engswee/flashpipe:latest \
-            sh -c '
+            bash -c '
               # --- Configuration ---
               API_URL="https://api.openai.com/v1/chat/completions"
               MODEL_NAME="gpt-4o-mini"
