@@ -69,8 +69,10 @@ jobs:
             
             # Dynamically build the list of packages needed
             PACKAGES_TO_INSTALL=""
-            if ! command -v jq >/dev/null 2>&1; then PACKAGES_TO_INSTALL+=" jq"; fi
-            if ! command -v curl >/dev/null 2>&1; then PACKAGES_TO_INSTALL+=" curl"; fi
+            
+            # 🚨 FIX: Using standard shell concatenation (var="\$var addition") 🚨
+            if ! command -v jq >/dev/null 2>&1; then PACKAGES_TO_INSTALL="$PACKAGES_TO_INSTALL jq"; fi
+            if ! command -v curl >/dev/null 2>&1; then PACKAGES_TO_INSTALL="$PACKAGES_TO_INSTALL curl"; fi
             
             # 1. Try APT (Debian/Ubuntu)
             if command -v apt-get >/dev/null 2>&1; then
