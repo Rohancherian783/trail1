@@ -20,6 +20,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y jq curl
 
+      ---
+
       # --- Step 1: Set Package ID as Environment Variable ---
       - name: Set Package ID
         id: pkg_id_step
@@ -28,20 +30,22 @@ jobs:
           echo "PKG_ID=${{ github.event.inputs.package_id }}" >> $GITHUB_ENV
           echo "Package ID selected for action: ${{ github.event.inputs.package_id }}"
 
+      ---
+
       # --- Step 2: Sync the specified Package with FlashPipe ---
-      - name: Run FlashPipe inside Docker (Sync Package: ${{ env.PKG_ID }})
-        shell: bash # <-- CRITICAL FIX: Explicitly use bash for the script
+      - name: 'Run FlashPipe inside Docker (Sync Package: ${{ env.PKG_ID }})' # Fixed Line 32
+        shell: bash
         env:
           TMN_HOST: ${{ secrets.DEV_TMN_HOST }}
           OAUTH_HOST: ${{ secrets.DEV_OAUTH_HOST }}
           CLIENT_ID: ${{ secrets.DEV_CLIENT_ID }}
           CLIENT_SECRET: ${{ secrets.DEV_CLIENT_SECRET }}
-          # PKG_ID is already available from the previous step's output into the environment
         run: |
           # Define package paths. Use standard shell variable $PKG_ID
+          PKG_ID="${{ env.PKG_ID }}"
           PKG_DIR="cpi-artifacts/$PKG_ID"
           
-          # Check if the package ID was provided. This is the logic around line 32.
+          # Check if the package ID was provided.
           if [ -z "$PKG_ID" ]; then
             echo "::error::Package ID is missing. Cannot proceed with sync."
             exit 1
@@ -66,19 +70,19 @@ jobs:
               --dir-artifacts "$PKG_DIR" \
               --sync-package-details
 
----
+      ---
 
       # --- Step 3: Generate Consolidated Documentation ---
       - name: Generate Consolidated Documentation via OpenAI API
         id: documentation_step
-        shell: bash # Use bash here too for consistency and reliability
+        shell: bash
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          # PKG_ID is available in the environment
         run: |
           # --- Configuration ---
           API_URL="https://api.openai.com/v1/chat/completions"
           MODEL_NAME="gpt-4o-mini"
+          PKG_ID="${{ env.PKG_ID }}"
           
           PKG_DIR="cpi-artifacts/$PKG_ID"
           DOC_OUTPUT_DIR="cpi-documentation/$PKG_ID"
@@ -172,9 +176,9 @@ jobs:
             echo "  ❌ Failed to generate consolidated documentation after $MAX_RETRIES attempts."
             echo "docs_generated=false" >> $GITHUB_OUTPUT
           fi
-          
----
 
+      ---
+          
       # --- Step 4: Commit Artifacts and Documentation ---
       - name: Commit & push
         if: always() # Run this step even if documentation step fails
@@ -183,7 +187,7 @@ jobs:
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           
-          PKG_ID="$PKG_ID" # PKG_ID is an env var, use it directly
+          PKG_ID="${{ env.PKG_ID }}"
           
           # Add the specific artifact and documentation folders
           git add "cpi-artifacts/$PKG_ID" "cpi-documentation/$PKG_ID"
