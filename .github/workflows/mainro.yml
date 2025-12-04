@@ -75,7 +75,7 @@ jobs:
             
             # 1. Try APT (Debian/Ubuntu)
             if command -v apt-get >/dev/null 2>&1; then
-              echo "Using apt-get to install:$PACKAGES_TO-INSTALL"
+              echo "Using apt-get to install:$PACKAGES_TO_INSTALL"
               apt-get update && apt-get install -y $PACKAGES_TO_INSTALL
               
             # 2. Try APK (Alpine Linux)
@@ -134,35 +134,33 @@ jobs:
             echo -e "\n--- END ARTIFACT: $INPUT_FILE ---\n" >> "$TEMP_CONTENT_FILE"
           done
 
-          # --- CRITICAL FIX: Clean the content before use ---
-          # Read, remove carriage returns (\r), and delete non-printable control characters 
-          # that break JSON parsing (excluding basic tabs/newlines, which jq can handle when using --arg)
-          FULL_ARTIFACT_CONTENT=$(
+          # --- API Execution: Direct Pipe (CRITICAL FIX) ---
+          # 1. Read the content from the temporary file.
+          # 2. Clean it: remove carriage returns and non-printable control characters.
+          # 3. Pipe the cleaned, raw content into jq.
+          # 4. jq uses -R (raw input) and -s (slurp entire input into one string) to safely 
+          #    read the multi-line content and correctly escape it for the final JSON payload.
+          PAYLOAD=$(
             cat "$TEMP_CONTENT_FILE" | \
             tr -d '\r' | \
-            tr -d '\000-\010\013\014\016-\037'
+            tr -d '\000-\010\013\014\016-\037' | \
+            jq -R -s -c \
+              --arg system "$SYSTEM_PROMPT" \
+              --arg model "gpt-4o-mini" \
+              '
+                # The "." here is the entire raw, cleaned content as a single, correctly escaped JSON string.
+                # We construct the final user prompt content within jq.
+                {
+                  model: $model,
+                  messages: [
+                    {role: "system", content: $system},
+                    {role: "user", content: ("Synthesize a single, consolidated technical report following the 10 mandatory sections from the entire set of package artifacts provided below. \n\n```text\n" + . + "\n```")}
+                  ],
+                  temperature: 0.1
+                }
+              '
           )
-          # --- End Cleaning ---
-          
-          # Build the user query text
-          USER_QUERY_TEXT='Synthesize a single, consolidated technical report following the 10 mandatory sections from the entire set of package artifacts provided below. \n\n```text\n'"$FULL_ARTIFACT_CONTENT"'\n```'
-          
-          # --- API Execution ---
-          # Using jq --arg ensures the cleaned multi-line string is properly escaped by jq 
-          # when constructing the final JSON payload.
-          PAYLOAD=$(jq -n \
-            --arg system "$SYSTEM_PROMPT" \
-            --arg model "gpt-4o-mini" \
-            --arg user_content "$USER_QUERY_TEXT" \
-            '{
-              model: $model,
-              messages: [
-                {role: "system", content: $system},
-                {role: "user", content: $user_content} 
-              ],
-              temperature: 0.1
-            }'
-          )
+          # --- End API Execution ---
           
           MAX_RETRIES=3
           RETRY_COUNT=0
