@@ -19,15 +19,12 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        
-      # Removed the "Install Dependencies" step as it was causing the "sudo: not found" error
-      # The Flashpipe container often includes 'jq', allowing us to proceed directly.
  
       - name: 🌐 Flashpipe Fetch (CPI to Temporary cpi-artifacts)
         id: fetch_cpi_artifacts
         env:
           PKG_ID: ${{ github.event.inputs.package_id }}
-          # 🚨 NEW: Standardizing on OAuth secrets for consistency and security 🚨
+          # Standardizing on OAuth secrets
           TMN_HOST: ${{ secrets.DEV_TMN_HOST }}
           OAUTH_HOST: ${{ secrets.DEV_OAUTH_HOST }}
           CLIENT_ID: ${{ secrets.DEV_CLIENT_ID }}
@@ -40,23 +37,22 @@ jobs:
           echo "--- Running Flashpipe to pull $PKG_ID into $CODE_DIR ---"
           
           # =========================================================================
-          # 1. Configure Flashpipe credentials using OAuth/Client Credentials
+          # FIX: Removed the failing 'flashpipe config set credentials' command.
+          # We pass all necessary credentials directly to the 'flashpipe sync' command, 
+          # which is the successful pattern used in your deployment workflows.
           # =========================================================================
-          flashpipe config set credentials \
-            --tmn-host "$TMN_HOST" \
-            --oauth-host "$OAUTH_HOST" \
-            --oauth-clientid "$CLIENT_ID" \
-            --oauth-clientsecret "$CLIENT_SECRET"
 
-          # =========================================================================
-          # 2. Pull the actual CPI package content using 'sync' targeting 'git'
-          #    This command pulls the data from CPI (Tenant) to the directory (Git).
-          # =========================================================================
+          # Pull the actual CPI package content using 'sync' targeting 'git'
+          # This command pulls the data from CPI (Tenant) to the directory (Git).
           flashpipe sync \
             --package-id "$PKG_ID" \
             --dir-artifacts "$CODE_DIR" \
             --sync-package-details \
-            --target "git" 
+            --target "git" \
+            --tmn-host "$TMN_HOST" \
+            --oauth-host "$OAUTH_HOST" \
+            --oauth-clientid "$CLIENT_ID" \
+            --oauth-clientsecret "$CLIENT_SECRET"
           
           
           if [ ! -d "$CODE_DIR" ]; then
