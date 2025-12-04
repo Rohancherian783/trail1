@@ -1,223 +1,244 @@
-name: Docs Only - Fetch CPI Documentation
- 
+name: 🤖 Sync All CPI Packages and Generate Documentation
+
 on:
-  # This allows manual triggering from the GitHub Actions tab, requiring the package_id input.
+  # Allows manual triggering of the workflow from the GitHub Actions tab
   workflow_dispatch:
     inputs:
       package_id:
-        description: "The ID of the CPI Integration Package to Fetch, Document, and Commit (Summary Only)."
-        required: true
+        description: "Enter a specific CPI Package ID to sync and document (Optional: Syncs ALL packages if left empty)."
+        required: false
         type: string
 
 jobs:
-  document:
+  sync_and_document:
     runs-on: ubuntu-latest
-    # Using the Flashpipe container ensures the 'flashpipe' command is available.
-    container:
-      image: engswee/flashpipe:latest
- 
+    
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
- 
-      - name: 🌐 Flashpipe Fetch (CPI to Temporary cpi-artifacts)
-        id: fetch_cpi_artifacts
+
+      - name: Install Dependencies (JQ and CURL for API calls)
+        # These are installed on the GitHub Runner machine before the Docker container starts
+        run: |
+          echo "Installing JQ and CURL..."
+          sudo apt-get update
+          sudo apt-get install -y jq curl
+
+      - name: Dynamic Fetch and Normalize Package List
+        id: normalize
         env:
-          PKG_ID: ${{ github.event.inputs.package_id }}
-          # Standardizing on OAuth secrets
           TMN_HOST: ${{ secrets.DEV_TMN_HOST }}
           OAUTH_HOST: ${{ secrets.DEV_OAUTH_HOST }}
           CLIENT_ID: ${{ secrets.DEV_CLIENT_ID }}
           CLIENT_SECRET: ${{ secrets.DEV_CLIENT_SECRET }}
-          
+          # Pass the input variable directly
+          SINGLE_PKG_INPUT: ${{ github.event.inputs.package_id }}
         run: |
-          # The directory where the artifacts will be temporarily stored for analysis
-          CODE_DIR="cpi-artifacts/$PKG_ID"
-          
-          echo "--- Running Flashpipe to pull $PKG_ID into $CODE_DIR ---"
-          
-          # Pull the actual CPI package content using 'sync' targeting 'git'
-          # This command pulls the data from CPI (Tenant) to the directory (Git).
-          flashpipe sync \
-            --package-id "$PKG_ID" \
-            --dir-artifacts "$CODE_DIR" \
-            --sync-package-details \
-            --target "git" \
-            --tmn-host "$TMN_HOST" \
-            --oauth-host "$OAUTH_HOST" \
-            --oauth-clientid "$CLIENT_ID" \
-            --oauth-clientsecret "$CLIENT_SECRET"
-          
-          
-          if [ ! -d "$CODE_DIR" ]; then
-            echo "::error::Package directory was not created by Flashpipe. Check Package ID or CPI connection secrets."
-            exit 1
-          fi
+          PACKAGE_IDS=""
+          SINGLE_PKG="$SINGLE_PKG_INPUT"
 
-      - name: 🧠 Analyze and Generate Consolidated Summary
-        id: documentation_step
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }} 
-          PKG_ID: ${{ github.event.inputs.package_id }}
-        run: |
-          # --- Dependency Check and Install (Revised Logic) ---
-          # Checks for JQ and CURL existence and installs them if missing.
-          
-          # Check if either dependency is missing
-          if ! command -v jq >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1; then
-            echo "Missing required dependencies (JQ or CURL). Attempting installation..."
+          if [ -n "$SINGLE_PKG" ]; then
+            echo "Mode: Manual single package sync requested: $SINGLE_PKG"
+            PACKAGE_IDS="$SINGLE_PKG"
+          else
+            echo "Mode: Full dynamic package sync requested (fetching all packages)."
             
-            # Dynamically build the list of packages needed
-            PACKAGES_TO_INSTALL=""
+            echo "🔑 Generating OAuth Token via cURL..."
+            TOKEN_URL="https://$OAUTH_HOST/oauth/token"
             
-            if ! command -v jq >/dev/null 2>&1; then PACKAGES_TO_INSTALL="$PACKAGES_TO_INSTALL jq"; fi
-            if ! command -v curl >/dev/null 2>&1; then PACKAGES_TO_INSTALL="$PACKAGES_TO_INSTALL curl"; fi
+            # 1. Fetch the OAuth Token using the Runner's curl/jq
+            AUTH_RESPONSE=$(curl -s -X POST "$TOKEN_URL" \
+              -H "Content-Type: application/x-www-form-urlencoded" \
+              -d "grant_type=client_credentials&client_id=$CLIENT_ID&client_secret=$CLIENT_SECRET")
             
-            # 1. Try APT (Debian/Ubuntu)
-            if command -v apt-get >/dev/null 2>&1; then
-              echo "Using apt-get to install:$PACKAGES_TO_INSTALL"
-              apt-get update && apt-get install -y $PACKAGES_TO_INSTALL
-              
-            # 2. Try APK (Alpine Linux)
-            elif command -v apk >/dev/null 2>&1; then
-              echo "Using apk to install:$PACKAGES_TO_INSTALL"
-              apk update && apk add $PACKAGES_TO_INSTALL
-              
-            # 3. Neither manager found
-            else
-              echo "::error::Neither 'apt-get' nor 'apk' found. Cannot install dependencies."
+            TOKEN=$(echo "$AUTH_RESPONSE" | jq -r ".access_token")
+            
+            if [ "$TOKEN" == "null" ] || [ -z "$TOKEN" ]; then
+              echo "::error::Failed to retrieve access token."
+              echo "Raw Auth Response: $AUTH_RESPONSE"
               exit 1
             fi
-          fi
-          
-          # Final check after installation attempts to ensure all dependencies are available
-          if ! command -v jq >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1; then
-             echo "::error::Required dependencies (JQ and CURL) are still missing. Analysis step cannot proceed."
-             exit 1
-          fi
-          # --- End Dependency Check ---
-
-          # --- API Key Validation ---
-          if [ -z "$OPENAI_API_KEY" ]; then
-             echo "::error::OPENAI_API_KEY secret is missing or empty. Cannot generate documentation."
-             echo "docs_generated=false" >> $GITHUB_OUTPUT
-             exit 1
-          fi
-          # --- End API Key Validation ---
-
-          # --- Paths ---
-          CODE_DIR="cpi-artifacts/$PKG_ID"        # Source of CPI files
-          DOCS_DIR="Documentation/$PKG_ID"        # Destination for the summary
-          OUTPUT_FILE="$DOCS_DIR/Package_Summary.md" 
-          TEMP_CONTENT_FILE="temp_content.txt" # Temporary file for collecting content
-          
-          # Create the required destination folder structure
-          mkdir -p "$DOCS_DIR"
-          
-          # --- SYSTEM PROMPT (Strict 10-Point Structure) ---
-          SYSTEM_PROMPT="You are a senior SAP CPI Technical Architect. Your task is to analyze ALL provided code and configuration files from a single CPI package and synthesize them into ONE consolidated Markdown documentation report. You MUST adhere strictly to the following 10-point structure: 1. High-level architecture, 2. Purpose of each iFlow, 3. Sender/Receiver systems, 4. Adapter types used, 5. Step-by-step flow explanation, 6. Mapping logic summary, 7. Groovy script explanations, 8. Error handling, 9. Security/authentication, 10. Deployment notes."
-
-          # --- Data Consolidation (Reads from CODE_DIR) ---
-          # Files to look for: Integration Flow XML, Groovy Scripts, XSLT Maps
-          FILES_TO_ANALYZE=$(find "$CODE_DIR" -type f \( -name 'iFlowContent.xml' -o -name '*.groovy' -o -name '*.xslt' \) -print)
-
-          if [ -z "$FILES_TO_ANALYZE" ]; then
-              echo "::warning::No supported artifacts found in package '$PKG_ID'. Skipping documentation."
-              echo "docs_generated=false" >> $GITHUB_OUTPUT
-              exit 0
-          fi
-          
-          # Use 'echo >>' redirection to safely build the content 
-          for INPUT_FILE in $FILES_TO_ANALYZE; do
-            echo -e "\n\n--- START ARTIFACT: $INPUT_FILE ---\n" >> "$TEMP_CONTENT_FILE"
-            cat "$INPUT_FILE" >> "$TEMP_CONTENT_FILE"
-            echo -e "\n--- END ARTIFACT: $INPUT_FILE ---\n" >> "$TEMP_CONTENT_FILE"
-          done
-
-          # --- API Execution: Direct Pipe (CRITICAL FIX) ---
-          # 1. Read the content from the temporary file.
-          # 2. Clean it: remove carriage returns and non-printable control characters.
-          # 3. Pipe the cleaned, raw content into jq.
-          # 4. jq uses -R (raw input) and -s (slurp entire input into one string) to safely 
-          #    read the multi-line content and correctly escape it for the final JSON payload.
-          PAYLOAD=$(
-            cat "$TEMP_CONTENT_FILE" | \
-            tr -d '\r' | \
-            tr -d '\000-\010\013\014\016-\037' | \
-            jq -R -s -c \
-              --arg system "$SYSTEM_PROMPT" \
-              --arg model "gpt-4o-mini" \
-              '
-                # The "." here is the entire raw, cleaned content as a single, correctly escaped JSON string.
-                # We construct the final user prompt content within jq.
-                {
-                  model: $model,
-                  messages: [
-                    {role: "system", content: $system},
-                    {role: "user", content: ("Synthesize a single, consolidated technical report following the 10 mandatory sections from the entire set of package artifacts provided below. \n\n```text\n" + . + "\n```")}
-                  ],
-                  temperature: 0.1
-                }
-              '
-          )
-          # --- End API Execution ---
-          
-          MAX_RETRIES=3
-          RETRY_COUNT=0
-          SLEEP_TIME=1 
-          
-          while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-            # Use curl -w to capture HTTP status code for better error reporting
-            API_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "https://api.openai.com/v1/chat/completions" -H "Content-Type: application/json" -H "Authorization: Bearer $OPENAI_API_KEY" -d "$PAYLOAD")
             
-            # Split response and status code
-            HTTP_STATUS=$(echo "$API_RESPONSE" | tail -n 1)
-            RESPONSE_BODY=$(echo "$API_RESPONSE" | sed '$d')
-
-            GENERATED_TEXT=$(echo "$RESPONSE_BODY" | jq -r ".choices[0].message.content")
-
-            if [ "$GENERATED_TEXT" != "null" ] && [ -n "$GENERATED_TEXT" ]; then
-              echo "$GENERATED_TEXT" > "$OUTPUT_FILE"
-              echo "docs_generated=true" >> $GITHUB_OUTPUT
-              break
-            else
-              RETRY_COUNT=$((RETRY_COUNT + 1))
-              
-              if [ "$HTTP_STATUS" -ge 400 ]; then
-                  echo "::error::API call FAILED with HTTP Status $HTTP_STATUS."
-                  echo "Error Response Body: $RESPONSE_BODY"
-              fi
-              
-              if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
-                  echo "API call failed. Retrying in $SLEEP_TIME seconds..."
-                  sleep "$SLEEP_TIME"
-                  SLEEP_TIME=$((SLEEP_TIME * 2))
-              else
-                  echo "::error::Maximum retries reached. Documentation generation failed."
-              fi
+            # 2. Fetch the Package List
+            echo "🔍 Fetching package list from tenant..."
+            API_URL="https://$TMN_HOST/api/v1/IntegrationPackages?\$format=json"
+            
+            PACKAGE_RESPONSE=$(curl -s -X GET "$API_URL" \
+              -H "Authorization: Bearer $TOKEN")
+            
+            # Use jq to get all 'Id' values and join them with spaces
+            PACKAGE_IDS=$(echo "$PACKAGE_RESPONSE" | jq -r ".d.results[].Id" | tr '\n' ' ')
+            
+            if [ -z "$PACKAGE_IDS" ]; then
+              echo "::warning::No packages found or API call failed. Check permissions."
+              exit 0
             fi
-          done
-          
-          if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
-            echo "docs_generated=false" >> $GITHUB_OUTPUT
           fi
           
- 
-      - name: 💾 Commit Documentation Summary (Only Documentation Folder)
-        if: steps.documentation_step.outputs.docs_generated == 'true'
+          echo "✅ Packages scheduled: $PACKAGE_IDS"
+          # Set the output variable for the next step to use
+          echo "packages=$PACKAGE_IDS" >> $GITHUB_OUTPUT
+
+      - name: Run FlashPipe and Document inside Docker (Loop)
+        env:
+          # Secrets needed for Flashpipe (inside Docker) and OpenAI (in shell script)
+          TMN_HOST: ${{ secrets.DEV_TMN_HOST }}
+          OAUTH_HOST: ${{ secrets.DEV_OAUTH_HOST }}
+          CLIENT_ID: ${{ secrets.DEV_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.DEV_CLIENT_SECRET }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          # Pass the dynamic package list to the shell script inside the container
+          PACKAGES_TO_SYNC: ${{ steps.normalize.outputs.packages }}
+
+        run: |
+          # The entire documentation and sync process runs inside a Docker container
+          # which has 'flashpipe' and the necessary shell tools (jq, curl) pre-installed 
+          # by the previous step.
+          docker run --rm \
+            --user $(id -u):$(id -g) \
+            -v "${GITHUB_WORKSPACE}:/workspace" \
+            -w /workspace \
+            -e TMN_HOST="$TMN_HOST" \
+            -e OAUTH_HOST="$OAUTH_HOST" \
+            -e CLIENT_ID="$CLIENT_ID" \
+            -e CLIENT_SECRET="$CLIENT_SECRET" \
+            -e OPENAI_API_KEY="$OPENAI_API_KEY" \
+            engswee/flashpipe:latest \
+            sh -c '
+              # --- Configuration ---
+              API_URL="https://api.openai.com/v1/chat/completions"
+              MODEL_NAME="gpt-4o-mini"
+              
+              # SYSTEM PROMPT: STRICT 10-Point Structure
+              SYSTEM_PROMPT="You are a senior SAP CPI Technical Architect. Your task is to analyze ALL provided code and configuration files from a single CPI package and synthesize them into ONE consolidated Markdown documentation report. You MUST adhere strictly to the following 10-point structure. Consolidate Groovy, XSLT, and iFlow logic into the relevant sections (5, 6, and 7).
+              
+              The 10 mandatory sections, using Markdown headings, are:
+              1. High-level architecture
+              2. Purpose of each iFlow
+              3. Sender/Receiver systems (Consolidated)
+              4. Adapter types used (Consolidated)
+              5. Step-by-step flow explanation (For each iFlow)
+              6. Mapping logic summary (Summarize XSLT, Mappings)
+              7. Groovy script explanations (Summarize all scripts and their usage/purpose)
+              8. Error handling
+              9. Security/authentication
+              10. Deployment notes"
+
+              # Loop over the dynamically retrieved list
+              for PKG in $PACKAGES_TO_SYNC; do
+                echo "=================================================="
+                echo "➡ Processing Package: $PKG"
+                
+                CODE_DIR="cpi-artifacts/$PKG"
+                DOCS_DIR="Documentation/$PKG"
+                TEMP_CONTENT_FILE="temp_content_$PKG.txt"
+                OUTPUT_FILE="$DOCS_DIR/Package_Summary.md"
+                
+                # 1. Sync Package Artifacts
+                echo "  1. Syncing artifacts for $PKG..."
+                flashpipe sync \
+                  --tmn-host "$TMN_HOST" \
+                  --oauth-host "$OAUTH_HOST" \
+                  --oauth-clientid "$CLIENT_ID" \
+                  --oauth-clientsecret "$CLIENT_SECRET" \
+                  --package-id "$PKG" \
+                  --dir-artifacts "$CODE_DIR" \
+                  --sync-package-details
+                  
+                if [ ! -d "$CODE_DIR" ]; then
+                  echo "  ⚠️ Sync failed for $PKG. Skipping documentation."
+                  continue
+                fi
+
+                # 2. Consolidate Data
+                mkdir -p "$DOCS_DIR"
+                FILES_TO_ANALYZE=$(find "$CODE_DIR" -type f \( -name 'iFlowContent.xml' -o -name '*.groovy' -o -name '*.xslt' \) -print)
+                
+                if [ -z "$FILES_TO_ANALYZE" ]; then
+                    echo "  ⚠️ No supported artifacts found in package '$PKG'. Skipping documentation."
+                    continue
+                fi
+
+                echo "  2. Consolidating files for documentation..."
+                > "$TEMP_CONTENT_FILE" # Clear file
+                for INPUT_FILE in $FILES_TO_ANALYZE; do
+                    echo -e "\n\n--- START ARTIFACT: $INPUT_FILE ---\n" >> "$TEMP_CONTENT_FILE"
+                    cat "$INPUT_FILE" >> "$TEMP_CONTENT_FILE"
+                    echo -e "\n--- END ARTIFACT: $INPUT_FILE ---\n" >> "$TEMP_CONTENT_FILE"
+                done
+
+                # 3. API Call Logic (Using the V4 Fix: Direct Pipe to JQ)
+                echo "  3. Calling OpenAI API for summary..."
+                MAX_RETRIES=3
+                RETRY_COUNT=0
+                SLEEP_TIME=1 
+                
+                # --- CRITICAL FIX: Clean and Pipe directly to jq for safe JSON payload generation ---
+                # This ensures control characters are removed and jq correctly escapes the multi-line string.
+                PAYLOAD=$(
+                  cat "$TEMP_CONTENT_FILE" | \
+                  tr -d '\r' | \
+                  tr -d '\000-\010\013\014\016-\037' | \
+                  jq -R -s -c \
+                    --arg system "$SYSTEM_PROMPT" \
+                    --arg model "$MODEL_NAME" \
+                    '
+                      {
+                        model: $model,
+                        messages: [
+                          {role: "system", content: $system},
+                          {role: "user", content: ("Synthesize a single, consolidated technical report following the 10 mandatory sections from the entire set of package artifacts provided below. Use the file names (e.g., iFlowContent.xml, Script.groovy) to structure your analysis. \n\n```text\n" + . + "\n```")}
+                        ],
+                        temperature: 0.1
+                      }
+                    '
+                )
+
+                while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+                  API_RESPONSE=$(curl -s -X POST "$API_URL" \
+                    -H "Content-Type: application/json" \
+                    -H "Authorization: Bearer $OPENAI_API_KEY" \
+                    -d "$PAYLOAD")
+                    
+                  GENERATED_TEXT=$(echo "$API_RESPONSE" | jq -r ".choices[0].message.content")
+                  
+                  if [ "$GENERATED_TEXT" != "null" ] && [ -n "$GENERATED_TEXT" ]; then
+                    echo "  ✅ Documentation generated successfully."
+                    echo "$GENERATED_TEXT" > "$OUTPUT_FILE"
+                    echo "  💾 Saved documentation to $OUTPUT_FILE"
+                    rm "$TEMP_CONTENT_FILE" # Clean up temp file
+                    break
+                  else
+                    ERROR_MSG=$(echo "$API_RESPONSE" | jq -r ".error.message // \"Unknown error\"")
+                    RETRY_COUNT=$((RETRY_COUNT + 1))
+                    DELAY=$((2**RETRY_COUNT))
+                    echo "  ⚠️ API call failed for $PKG: $ERROR_MSG (Attempt $RETRY_COUNT/$MAX_RETRIES). Retrying in $DELAY seconds..."
+                    if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+                        sleep "$DELAY"
+                    fi
+                  fi
+                done
+                
+                if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
+                  echo "  ❌ Failed to generate documentation for $PKG after $MAX_RETRIES attempts."
+                fi
+                echo "=================================================="
+              done
+            '
+
+      - name: Commit & push all changes
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           
-          # Add ONLY the Documentation folder to the commit index
-          git add --force "Documentation"
+          # Add artifacts (cpi-artifacts) and documentation (Documentation)
+          git add cpi-artifacts Documentation
           
-          # Check if the generated documentation actually changed anything
+          # Check for changes across both folders
           if git diff --cached --quiet; then
-              echo "No changes detected in the documentation summary. Skipping commit."
+              echo "No meaningful changes detected. Skipping commit."
           else
-              PKG_ID="${{ github.event.inputs.package_id }}"
-              git commit -m "🤖 DOCS: Generated and updated Package Summary for $PKG_ID in Documentation/ folder."
+              git commit -m "Automated CPI sync and documentation update for all packages."
               git push
-              echo "✅ Documentation committed to repository."
+              echo "✅ All changes committed and pushed."
           fi
