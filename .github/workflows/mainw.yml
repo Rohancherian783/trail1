@@ -10,7 +10,6 @@ on:
 jobs:
   sync_and_document_single:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -20,8 +19,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y jq curl
 
-      ---
-
       # --- Step 1: Set Package ID as Environment Variable ---
       - name: Set Package ID
         id: pkg_id_step
@@ -30,10 +27,8 @@ jobs:
           echo "PKG_ID=${{ github.event.inputs.package_id }}" >> $GITHUB_ENV
           echo "Package ID selected for action: ${{ github.event.inputs.package_id }}"
 
-      ---
-
       # --- Step 2: Sync the specified Package with FlashPipe ---
-      - name: 'Run FlashPipe inside Docker (Sync Package: ${{ env.PKG_ID }})' # Fixed Line 32
+      - name: 'Run FlashPipe inside Docker (Sync Package: ${{ env.PKG_ID }})'
         shell: bash
         env:
           TMN_HOST: ${{ secrets.DEV_TMN_HOST }}
@@ -44,15 +39,14 @@ jobs:
           # Define package paths. Use standard shell variable $PKG_ID
           PKG_ID="${{ env.PKG_ID }}"
           PKG_DIR="cpi-artifacts/$PKG_ID"
-          
+
           # Check if the package ID was provided.
           if [ -z "$PKG_ID" ]; then
             echo "::error::Package ID is missing. Cannot proceed with sync."
             exit 1
           fi
-
           echo "➡ Syncing package: $PKG_ID..."
-          
+
           docker run --rm \
             -v "${GITHUB_WORKSPACE}:/workspace" \
             -w /workspace \
@@ -70,8 +64,6 @@ jobs:
               --dir-artifacts "$PKG_DIR" \
               --sync-package-details
 
-      ---
-
       # --- Step 3: Generate Consolidated Documentation ---
       - name: Generate Consolidated Documentation via OpenAI API
         id: documentation_step
@@ -83,23 +75,23 @@ jobs:
           API_URL="https://api.openai.com/v1/chat/completions"
           MODEL_NAME="gpt-4o-mini"
           PKG_ID="${{ env.PKG_ID }}"
-          
+
           PKG_DIR="cpi-artifacts/$PKG_ID"
           DOC_OUTPUT_DIR="cpi-documentation/$PKG_ID"
-          OUTPUT_FILE="$DOC_OUTPUT_DIR/Package_Summary.md" 
+          OUTPUT_FILE="$DOC_OUTPUT_DIR/Package_Summary.md"
 
           if [ ! -d "$PKG_DIR" ]; then
             echo "::error::Artifacts directory not found at: $PKG_DIR. Sync may have failed."
             echo "docs_generated=false" >> $GITHUB_OUTPUT
             exit 1
           fi
-          
+
           mkdir -p "$DOC_OUTPUT_DIR"
           echo "🔍 Consolidating ALL CPI artifacts into a single request for Package: $PKG_ID"
-          
+
           # --- Prompt Definitions: STRICT 10-Point Structure ---
           SYSTEM_PROMPT="You are a senior SAP CPI Technical Architect. Your task is to analyze ALL provided code and configuration files from a single CPI package and synthesize them into ONE consolidated Markdown documentation report. You MUST adhere strictly to the following 10-point structure. Consolidate Groovy, XSLT, and iFlow logic into the relevant sections (5, 6, and 7).
-          
+
           The 10 mandatory sections, using Markdown headings, are:
           1. High-level architecture
           2. Purpose of each iFlow
@@ -111,28 +103,28 @@ jobs:
           8. Error handling
           9. Security/authentication
           10. Deployment notes"
-          
+
           # --- Data Consolidation ---
           FULL_ARTIFACT_CONTENT=""
           FILES_TO_ANALYZE=$(find "$PKG_DIR" -type f \( -name 'iFlowContent.xml' -o -name '*.groovy' -o -name '*.xslt' \) -print)
-          
+
           if [ -z "$FILES_TO_ANALYZE" ]; then
               echo "::warning::No supported artifacts found in package '$PKG_ID'. Skipping documentation."
               echo "docs_generated=false" >> $GITHUB_OUTPUT
               exit 0
           fi
-          
+
           for INPUT_FILE in $FILES_TO_ANALYZE; do
             FILE_CONTENT=$(cat "$INPUT_FILE")
             FULL_ARTIFACT_CONTENT+=$'\n\n--- START ARTIFACT: '"$INPUT_FILE"$'\n'
             FULL_ARTIFACT_CONTENT+="$FILE_CONTENT"
             FULL_ARTIFACT_CONTENT+=$'\n--- END ARTIFACT: '"$INPUT_FILE"$'\n'
           done
-          
+
           echo "Total size of consolidated input: ${#FULL_ARTIFACT_CONTENT} characters."
-          
+
           USER_QUERY="Synthesize a single, consolidated technical report following the 10 mandatory sections from the entire set of package artifacts provided below. Use the file names (e.g., iFlowContent.xml, Script.groovy) to structure your analysis. \n\n\`\`\`text\n$FULL_ARTIFACT_CONTENT\n\`\`\`"
-          
+
           # --- API Call Logic ---
           PAYLOAD=$(jq -n \
             --arg system "$SYSTEM_PROMPT" \
@@ -146,17 +138,17 @@ jobs:
               ],
               temperature: 0.1
             }')
-            
+
           MAX_RETRIES=3
           RETRY_COUNT=0
-          
+
           while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
             API_RESPONSE=$(curl -s -X POST "$API_URL" \
               -H "Content-Type: application/json" \
               -H "Authorization: Bearer $OPENAI_API_KEY" \
               -d "$PAYLOAD")
             GENERATED_TEXT=$(echo "$API_RESPONSE" | jq -r ".choices[0].message.content")
-            
+
             if [ "$GENERATED_TEXT" != "null" ] && [ -n "$GENERATED_TEXT" ]; then
               echo "  ✅ Consolidated Documentation generated successfully."
               echo "$GENERATED_TEXT" > "$OUTPUT_FILE"
@@ -171,14 +163,12 @@ jobs:
               sleep "$DELAY"
             fi
           done
-          
+
           if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
             echo "  ❌ Failed to generate consolidated documentation after $MAX_RETRIES attempts."
             echo "docs_generated=false" >> $GITHUB_OUTPUT
           fi
 
-      ---
-          
       # --- Step 4: Commit Artifacts and Documentation ---
       - name: Commit & push
         if: always() # Run this step even if documentation step fails
@@ -186,16 +176,15 @@ jobs:
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
-          
+
           PKG_ID="${{ env.PKG_ID }}"
-          
+
           # Add the specific artifact and documentation folders
           git add "cpi-artifacts/$PKG_ID" "cpi-documentation/$PKG_ID"
-          
+
           COMMIT_MSG="Automated CPI sync & documentation for package: $PKG_ID"
-          
+
           # Check if there are any changes to commit
           git commit -m "$COMMIT_MSG" || echo "No changes detected for $PKG_ID. Skipping commit."
           git push || true
-
           echo "✅ Action complete."
