@@ -1,6 +1,7 @@
-name: Docs fetch document
+name: fetch cpi create doc
  
 on:
+  # This allows manual triggering from the GitHub Actions tab, requiring the package_id input.
   workflow_dispatch:
     inputs:
       package_id:
@@ -17,6 +18,7 @@ jobs:
         uses: actions/checkout@v4
         
       - name: Install Dependencies (jq only)
+        # jq is necessary to build the JSON payload for the OpenAI API call.
         run: |
           sudo apt-get update
           sudo apt-get install -y jq
@@ -25,26 +27,37 @@ jobs:
         id: fetch_cpi_artifacts
         env:
           PKG_ID: ${{ github.event.inputs.package_id }}
+          # These must be configured as secrets in your GitHub repository
           CPI_URL: ${{ secrets.CPI_URL }}
           CPI_USERNAME: ${{ secrets.CPI_USERNAME }}
           CPI_PASSWORD: ${{ secrets.CPI_PASSWORD }}
+          
         run: |
-          # --- Paths ---
+          # The directory where the artifacts will be temporarily stored for analysis
           CODE_DIR="cpi-artifacts/$PKG_ID"
           
           echo "--- Running Flashpipe to pull $PKG_ID into $CODE_DIR ---"
           
-          # --------------------------------------------------------------------------
-          # ACTION REQUIRED: Replace the lines below with your actual Flashpipe command.
-          # Example: flashpipe pull package --package-id $PKG_ID --target-dir $CODE_DIR --force
-          # --------------------------------------------------------------------------
+          # =========================================================================
+          #  ACTION REQUIRED: INSERT YOUR ACTUAL FLASHPIPE COMMAND HERE
+          # -------------------------------------------------------------------------
+          #  If you need to log in first:
+          #  flashpipe config set credentials --url $CPI_URL --user $CPI_USERNAME --password $CPI_PASSWORD
+          #  Then the pull command:
+          #  flashpipe pull package --package-id $PKG_ID --target-dir $CODE_DIR --force
+          # =========================================================================
           
-          # --- MOCK FILES FOR TESTING (DELETE THIS SECTION IN PRODUCTION) ---
+          # -------------------------------------------------------------------------
+          # !!! IMPORTANT: DELETE THIS MOCK CODE SECTION IN PRODUCTION !!!
+          # It generates temporary files for workflow testing.
+          # -------------------------------------------------------------------------
           MOCK_DIR="$CODE_DIR/TestIFlow"
           mkdir -p "$MOCK_DIR"
-          echo "<IntegrationFlow name='Test Flow 1'><description>A test flow</description></IntegrationFlow>" > "$MOCK_DIR/iFlowContent.xml"
-          echo "def msg = message.getBody(); return 'Modified: ' + msg;" > "$CODE_DIR/my_utility_script.groovy"
-          # --- END MOCK FILES ---
+          echo "<IntegrationFlow name='Test Flow 1 (Mock)'><description>A mock flow description.</description><sender>MockSAP</sender></IntegrationFlow>" > "$MOCK_DIR/iFlowContent.xml"
+          echo "def msg = message.getBody(); // Script does nothing but returns the body. return msg;" > "$CODE_DIR/mock_script.groovy"
+          # -------------------------------------------------------------------------
+          # !!! END MOCK CODE SECTION !!!
+          # -------------------------------------------------------------------------
           
           if [ ! -d "$CODE_DIR" ]; then
             echo "::error::Package directory was not created by Flashpipe. Check Flashpipe command."
@@ -88,6 +101,7 @@ jobs:
           USER_QUERY="Synthesize a single, consolidated technical report following the 10 mandatory sections from the entire set of package artifacts provided below. \n\n\`\`\`text\n$FULL_ARTIFACT_CONTENT\n\`\`\`"
           
           # --- API Execution ---
+          # Using gpt-4o-mini for efficient, high-quality synthesis
           PAYLOAD=$(jq -n --arg system "$SYSTEM_PROMPT" --arg query "$USER_QUERY" --arg model "gpt-4o-mini" \
             '{ model: $model, messages: [{role: "system", content: $system},{role: "user", content: $query}], temperature: 0.1 }')
           
@@ -114,14 +128,16 @@ jobs:
           
  
       - name: 💾 Commit Documentation Summary (Only Documentation Folder)
+        # This step only runs if the documentation was successfully generated.
         if: steps.documentation_step.outputs.docs_generated == 'true'
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           
-          # Add ONLY the Documentation folder
+          # Add ONLY the Documentation folder to the commit index
           git add --force "Documentation"
           
+          # Check if the generated documentation actually changed anything
           if git diff --cached --quiet; then
               echo "No changes detected in the documentation summary. Skipping commit."
           else
