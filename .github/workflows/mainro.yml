@@ -1,4 +1,4 @@
-name: fetch cpi create doc
+name: Docs Only - Fetch CPI Documentation
  
 on:
   # This allows manual triggering from the GitHub Actions tab, requiring the package_id input.
@@ -12,6 +12,9 @@ on:
 jobs:
   document:
     runs-on: ubuntu-latest
+    # Using the Flashpipe container ensures the 'flashpipe' command is available.
+    container:
+      image: engswee/flashpipe:latest
  
     steps:
       - name: Checkout repository
@@ -27,10 +30,11 @@ jobs:
         id: fetch_cpi_artifacts
         env:
           PKG_ID: ${{ github.event.inputs.package_id }}
-          # These must be configured as secrets in your GitHub repository
-          CPI_URL: ${{ secrets.CPI_URL }}
-          CPI_USERNAME: ${{ secrets.CPI_USERNAME }}
-          CPI_PASSWORD: ${{ secrets.CPI_PASSWORD }}
+          # 🚨 NEW: Standardizing on OAuth secrets for consistency and security 🚨
+          TMN_HOST: ${{ secrets.DEV_TMN_HOST }}
+          OAUTH_HOST: ${{ secrets.DEV_OAUTH_HOST }}
+          CLIENT_ID: ${{ secrets.DEV_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.DEV_CLIENT_SECRET }}
           
         run: |
           # The directory where the artifacts will be temporarily stored for analysis
@@ -39,28 +43,27 @@ jobs:
           echo "--- Running Flashpipe to pull $PKG_ID into $CODE_DIR ---"
           
           # =========================================================================
-          #  ACTION REQUIRED: INSERT YOUR ACTUAL FLASHPIPE COMMAND HERE
-          # -------------------------------------------------------------------------
-          #  If you need to log in first:
-          #  flashpipe config set credentials --url $CPI_URL --user $CPI_USERNAME --password $CPI_PASSWORD
-          #  Then the pull command:
-          #  flashpipe pull package --package-id $PKG_ID --target-dir $CODE_DIR --force
+          # 1. Configure Flashpipe credentials using OAuth/Client Credentials
           # =========================================================================
+          flashpipe config set credentials \
+            --tmn-host "$TMN_HOST" \
+            --oauth-host "$OAUTH_HOST" \
+            --oauth-clientid "$CLIENT_ID" \
+            --oauth-clientsecret "$CLIENT_SECRET"
+
+          # =========================================================================
+          # 2. Pull the actual CPI package content using 'sync' targeting 'git'
+          #    This command pulls the data from CPI (Tenant) to the directory (Git).
+          # =========================================================================
+          flashpipe sync \
+            --package-id "$PKG_ID" \
+            --dir-artifacts "$CODE_DIR" \
+            --sync-package-details \
+            --target "git" 
           
-          # -------------------------------------------------------------------------
-          # !!! IMPORTANT: DELETE THIS MOCK CODE SECTION IN PRODUCTION !!!
-          # It generates temporary files for workflow testing.
-          # -------------------------------------------------------------------------
-          MOCK_DIR="$CODE_DIR/TestIFlow"
-          mkdir -p "$MOCK_DIR"
-          echo "<IntegrationFlow name='Test Flow 1 (Mock)'><description>A mock flow description.</description><sender>MockSAP</sender></IntegrationFlow>" > "$MOCK_DIR/iFlowContent.xml"
-          echo "def msg = message.getBody(); // Script does nothing but returns the body. return msg;" > "$CODE_DIR/mock_script.groovy"
-          # -------------------------------------------------------------------------
-          # !!! END MOCK CODE SECTION !!!
-          # -------------------------------------------------------------------------
           
           if [ ! -d "$CODE_DIR" ]; then
-            echo "::error::Package directory was not created by Flashpipe. Check Flashpipe command."
+            echo "::error::Package directory was not created by Flashpipe. Check Package ID or CPI connection secrets."
             exit 1
           fi
 
@@ -101,7 +104,6 @@ jobs:
           USER_QUERY="Synthesize a single, consolidated technical report following the 10 mandatory sections from the entire set of package artifacts provided below. \n\n\`\`\`text\n$FULL_ARTIFACT_CONTENT\n\`\`\`"
           
           # --- API Execution ---
-          # Using gpt-4o-mini for efficient, high-quality synthesis
           PAYLOAD=$(jq -n --arg system "$SYSTEM_PROMPT" --arg query "$USER_QUERY" --arg model "gpt-4o-mini" \
             '{ model: $model, messages: [{role: "system", content: $system},{role: "user", content: $query}], temperature: 0.1 }')
           
@@ -128,7 +130,6 @@ jobs:
           
  
       - name: 💾 Commit Documentation Summary (Only Documentation Folder)
-        # This step only runs if the documentation was successfully generated.
         if: steps.documentation_step.outputs.docs_generated == 'true'
         run: |
           git config user.name "github-actions"
