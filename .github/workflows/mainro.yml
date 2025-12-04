@@ -36,12 +36,6 @@ jobs:
           
           echo "--- Running Flashpipe to pull $PKG_ID into $CODE_DIR ---"
           
-          # =========================================================================
-          # FIX: Removed the failing 'flashpipe config set credentials' command.
-          # We pass all necessary credentials directly to the 'flashpipe sync' command, 
-          # which is the successful pattern used in your deployment workflows.
-          # =========================================================================
-
           # Pull the actual CPI package content using 'sync' targeting 'git'
           # This command pulls the data from CPI (Tenant) to the directory (Git).
           flashpipe sync \
@@ -70,6 +64,7 @@ jobs:
           CODE_DIR="cpi-artifacts/$PKG_ID"        # Source of CPI files
           DOCS_DIR="Documentation/$PKG_ID"        # Destination for the summary
           OUTPUT_FILE="$DOCS_DIR/Package_Summary.md" 
+          TEMP_CONTENT_FILE="temp_content.txt" # Temporary file for collecting content
           
           # Create the required destination folder structure
           mkdir -p "$DOCS_DIR"
@@ -78,7 +73,7 @@ jobs:
           SYSTEM_PROMPT="You are a senior SAP CPI Technical Architect. Your task is to analyze ALL provided code and configuration files from a single CPI package and synthesize them into ONE consolidated Markdown documentation report. You MUST adhere strictly to the following 10-point structure: 1. High-level architecture, 2. Purpose of each iFlow, 3. Sender/Receiver systems, 4. Adapter types used, 5. Step-by-step flow explanation, 6. Mapping logic summary, 7. Groovy script explanations, 8. Error handling, 9. Security/authentication, 10. Deployment notes."
 
           # --- Data Consolidation (Reads from CODE_DIR) ---
-          FULL_ARTIFACT_CONTENT=""
+          # Files to look for: Integration Flow XML, Groovy Scripts, XSLT Maps
           FILES_TO_ANALYZE=$(find "$CODE_DIR" -type f \( -name 'iFlowContent.xml' -o -name '*.groovy' -o -name '*.xslt' \) -print)
 
           if [ -z "$FILES_TO_ANALYZE" ]; then
@@ -86,13 +81,16 @@ jobs:
               echo "docs_generated=false" >> $GITHUB_OUTPUT
               exit 0
           fi
-
+          
+          # 🚨 FIX: Use 'echo >>' redirection to safely build the content 🚨
           for INPUT_FILE in $FILES_TO_ANALYZE; do
-            FILE_CONTENT=$(cat "$INPUT_FILE")
-            FULL_ARTIFACT_CONTENT+="\n\n--- START ARTIFACT: $INPUT_FILE ---\n"
-            FULL_ARTIFACT_CONTENT+="$FILE_CONTENT"
-            FULL_ARTIFACT_CONTENT+="\n--- END ARTIFACT: $INPUT_FILE ---\n"
+            echo -e "\n\n--- START ARTIFACT: $INPUT_FILE ---\n" >> "$TEMP_CONTENT_FILE"
+            cat "$INPUT_FILE" >> "$TEMP_CONTENT_FILE"
+            echo -e "\n--- END ARTIFACT: $INPUT_FILE ---\n" >> "$TEMP_CONTENT_FILE"
           done
+
+          # Read the entire content from the temporary file into the variable
+          FULL_ARTIFACT_CONTENT=$(cat "$TEMP_CONTENT_FILE")
           
           USER_QUERY="Synthesize a single, consolidated technical report following the 10 mandatory sections from the entire set of package artifacts provided below. \n\n\`\`\`text\n$FULL_ARTIFACT_CONTENT\n\`\`\`"
           
