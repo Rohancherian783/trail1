@@ -35,9 +35,10 @@ jobs:
           OAUTH_HOST: ${{ secrets.DEV_OAUTH_HOST }}
           CLIENT_ID: ${{ secrets.DEV_CLIENT_ID }}
           CLIENT_SECRET: ${{ secrets.DEV_CLIENT_SECRET }}
-          PKG_ID: ${{ env.PKG_ID }} # Use the environment variable
+          # PKG_ID is pulled from the previous step's output into the environment
         run: |
           # Define package paths
+          PKG_ID="${{ env.PKG_ID }}"
           PKG_DIR="cpi-artifacts/$PKG_ID"
           
           # Check if the package ID was provided
@@ -70,14 +71,15 @@ jobs:
         id: documentation_step
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          PKG_ID: ${{ env.PKG_ID }}
+          # PKG_ID is already available in the environment
         run: |
           # --- Configuration ---
           API_URL="https://api.openai.com/v1/chat/completions"
           MODEL_NAME="gpt-4o-mini"
+          PKG_ID="${{ env.PKG_ID }}"
           
           PKG_DIR="cpi-artifacts/$PKG_ID"
-          DOC_OUTPUT_DIR="cpi-documentation/$PKG_ID" # New separate documentation folder
+          DOC_OUTPUT_DIR="cpi-documentation/$PKG_ID"
           OUTPUT_FILE="$DOC_OUTPUT_DIR/Package_Summary.md" 
 
           if [ ! -d "$PKG_DIR" ]; then
@@ -86,10 +88,11 @@ jobs:
             exit 1
           fi
           
-          mkdir -p "$DOC_OUTPUT_DIR" # Create the documentation output directory
+          mkdir -p "$DOC_OUTPUT_DIR"
           echo "🔍 Consolidating ALL CPI artifacts into a single request for Package: $PKG_ID"
           
           # --- Prompt Definitions: STRICT 10-Point Structure ---
+          # Note: The system prompt is defined inline here to minimize complexity
           SYSTEM_PROMPT="You are a senior SAP CPI Technical Architect. Your task is to analyze ALL provided code and configuration files from a single CPI package and synthesize them into ONE consolidated Markdown documentation report. You MUST adhere strictly to the following 10-point structure. Consolidate Groovy, XSLT, and iFlow logic into the relevant sections (5, 6, and 7).
           
           The 10 mandatory sections, using Markdown headings, are:
@@ -116,9 +119,9 @@ jobs:
           
           for INPUT_FILE in $FILES_TO_ANALYZE; do
             FILE_CONTENT=$(cat "$INPUT_FILE")
-            FULL_ARTIFACT_CONTENT+="\n\n--- START ARTIFACT: $INPUT_FILE ---\n"
+            FULL_ARTIFACT_CONTENT+=$'\n\n--- START ARTIFACT: '"$INPUT_FILE"$'\n'
             FULL_ARTIFACT_CONTENT+="$FILE_CONTENT"
-            FULL_ARTIFACT_CONTENT+="\n--- END ARTIFACT: $INPUT_FILE ---\n"
+            FULL_ARTIFACT_CONTENT+=$'\n--- END ARTIFACT: '"$INPUT_FILE"$'\n'
           done
           
           echo "Total size of consolidated input: ${#FULL_ARTIFACT_CONTENT} characters."
@@ -171,12 +174,11 @@ jobs:
           
       # --- Step 4: Commit Artifacts and Documentation ---
       - name: Commit & push
-        if: success() || failure() # Always run this step to commit artifacts even if documentation fails
+        if: always() # Run this step even if documentation step fails
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           
-          # Use the package ID from the environment variable
           PKG_ID="${{ env.PKG_ID }}"
           
           # Add the specific artifact and documentation folders
