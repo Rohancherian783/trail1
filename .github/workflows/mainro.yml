@@ -60,6 +60,19 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }} 
           PKG_ID: ${{ github.event.inputs.package_id }}
         run: |
+          # --- JQ Dependency Check and Install ---
+          # We need JQ for API payload construction. Since the container is minimal, 
+          # we attempt to install it without 'sudo' using common package managers.
+          if ! command -v jq >/dev/null 2>&1; then
+            echo "JQ not found. Attempting to install..."
+            # Try APT (Debian/Ubuntu, often fails if 'update' fails)
+            apt-get update && apt-get install -y jq || \
+            # Try APK (Alpine Linux)
+            apk update && apk add jq || \
+            # If both fail, log an error and exit
+            (echo "::error::Failed to install 'jq'. Analysis step cannot proceed." && exit 1)
+          fi
+          
           # --- Paths ---
           CODE_DIR="cpi-artifacts/$PKG_ID"        # Source of CPI files
           DOCS_DIR="Documentation/$PKG_ID"        # Destination for the summary
@@ -82,7 +95,7 @@ jobs:
               exit 0
           fi
           
-          # 🚨 FIX: Use 'echo >>' redirection to safely build the content 🚨
+          # Use 'echo >>' redirection to safely build the content 
           for INPUT_FILE in $FILES_TO_ANALYZE; do
             echo -e "\n\n--- START ARTIFACT: $INPUT_FILE ---\n" >> "$TEMP_CONTENT_FILE"
             cat "$INPUT_FILE" >> "$TEMP_CONTENT_FILE"
@@ -138,3 +151,4 @@ jobs:
               git push
               echo "✅ Documentation committed to repository."
           fi
+         
