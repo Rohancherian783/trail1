@@ -20,11 +20,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         
-      - name: Install Dependencies (jq only)
-        # jq is necessary to build the JSON payload for the OpenAI API call.
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y jq
+      # Removed the "Install Dependencies" step as it was causing the "sudo: not found" error
+      # The Flashpipe container often includes 'jq', allowing us to proceed directly.
  
       - name: 🌐 Flashpipe Fetch (CPI to Temporary cpi-artifacts)
         id: fetch_cpi_artifacts
