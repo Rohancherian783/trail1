@@ -173,5 +173,5 @@ jobs:
                 SLEEP_TIME=1 
                 
                 # --- CRITICAL FIX: Clean and Pipe directly to jq for safe JSON payload generation ---
-                # The entire command substitution is now a single logical line to avoid nested shell parsing errors.
+                # Restored the complete single-line command substitution to avoid syntax errors.
                 PAYLOAD=$(cat "$TEMP_CONTENT_FILE" | tr -d '\r' | tr -d '\000-\010\013\014\016-\037' | jq -R -s -c --arg system "$SYSTEM_PROMPT" --arg model "$MODEL_NAME" '{"model": $model,"messages": [{ "role": "system", "content": $system },{ "role": "user", "content": ("Synthesize a single, consolidated technical report following the 10 mandatory sections from the entire set of package artifacts provided below. Use the file names (e.g., iFlowContent.xml, Script.groovy) to structure your analysis. \n\n
