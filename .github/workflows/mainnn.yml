@@ -1,4 +1,4 @@
-name: 📝 DOCS ONLY: Fetch CPI, Analyze, and Commit Summary (Separate Folder)
+name: Fetch project from tenant,create documentation 
  
 on:
   workflow_dispatch:
