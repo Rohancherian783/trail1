@@ -139,23 +139,27 @@ jobs:
           FULL_ARTIFACT_CONTENT=$(cat "$TEMP_CONTENT_FILE")
           
           # Build the user query text
-          USER_QUERY_TEXT="Synthesize a single, consolidated technical report following the 10 mandatory sections from the entire set of package artifacts provided below. \n\n\`\`\`text\n$FULL_ARTIFACT_CONTENT\n\`\`\`"
+          # Note: The single quotes around the variable expansion below are CRITICAL 
+          # to preserve newlines and prevent premature shell expansion issues.
+          USER_QUERY_TEXT='Synthesize a single, consolidated technical report following the 10 mandatory sections from the entire set of package artifacts provided below. \n\n```text\n'"$FULL_ARTIFACT_CONTENT"'\n```'
           
           # --- API Execution ---
-          # 🚨 FIX: Using `echo "$USER_QUERY_TEXT" | jq...` to pipe the multi-line content directly 
-          # as the input stream (represented by `.`) to the jq script. This reliably handles the multi-line string.
+          # 🚨 FIX V2: Passing the user query text via an explicit --arg to ensure proper JSON escaping by jq.
           
-          PAYLOAD=$(echo "$USER_QUERY_TEXT" | jq -n --arg system "$SYSTEM_PROMPT" --arg model "gpt-4o-mini" --raw-input '
-            {
+          PAYLOAD=$(jq -n \
+            --arg system "$SYSTEM_PROMPT" \
+            --arg model "gpt-4o-mini" \
+            --arg user_content "$USER_QUERY_TEXT" \
+            '{
               model: $model,
               messages: [
                 {role: "system", content: $system},
-                # The '.' here correctly receives the full USER_QUERY_TEXT string piped from echo.
-                {role: "user", content: .} 
+                # Referencing the explicit argument ensures the string is correctly escaped and injected.
+                {role: "user", content: $user_content} 
               ],
               temperature: 0.1
-            }
-          ')
+            }'
+          )
           
           MAX_RETRIES=3
           RETRY_COUNT=0
@@ -216,4 +220,3 @@ jobs:
               git push
               echo "✅ Documentation committed to repository."
           fi
-         
