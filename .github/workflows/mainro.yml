@@ -60,34 +60,41 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }} 
           PKG_ID: ${{ github.event.inputs.package_id }}
         run: |
-          # --- JQ Dependency Check and Install (Revised Logic) ---
-          # Checks for JQ existence and installs it using the correct package manager.
-          if ! command -v jq >/dev/null 2>&1; then
-            echo "JQ not found. Attempting to install..."
+          # --- Dependency Check and Install (Revised Logic) ---
+          # Checks for JQ and CURL existence and installs them if missing.
+          
+          # Check if either dependency is missing
+          if ! command -v jq >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1; then
+            echo "Missing required dependencies (JQ or CURL). Attempting installation..."
+            
+            # Dynamically build the list of packages needed
+            PACKAGES_TO_INSTALL=""
+            if ! command -v jq >/dev/null 2>&1; then PACKAGES_TO_INSTALL+=" jq"; fi
+            if ! command -v curl >/dev/null 2>&1; then PACKAGES_TO_INSTALL+=" curl"; fi
             
             # 1. Try APT (Debian/Ubuntu)
             if command -v apt-get >/dev/null 2>&1; then
-              echo "Using apt-get..."
-              apt-get update && apt-get install -y jq
+              echo "Using apt-get to install:$PACKAGES_TO_INSTALL"
+              apt-get update && apt-get install -y $PACKAGES_TO_INSTALL
               
             # 2. Try APK (Alpine Linux)
             elif command -v apk >/dev/null 2>&1; then
-              echo "Using apk..."
-              apk update && apk add jq
+              echo "Using apk to install:$PACKAGES_TO_INSTALL"
+              apk update && apk add $PACKAGES_TO_INSTALL
               
             # 3. Neither manager found
             else
-              echo "::error::Neither 'apt-get' nor 'apk' found. Cannot install 'jq'."
+              echo "::error::Neither 'apt-get' nor 'apk' found. Cannot install dependencies."
               exit 1
             fi
           fi
           
-          # Final check after installation attempts to ensure JQ is available
-          if ! command -v jq >/dev/null 2>&1; then
-             echo "::error::Failed to install 'jq'. Analysis step cannot proceed."
+          # Final check after installation attempts to ensure all dependencies are available
+          if ! command -v jq >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1; then
+             echo "::error::Required dependencies (JQ and CURL) are still missing. Analysis step cannot proceed."
              exit 1
           fi
-          # --- End JQ Dependency Check ---
+          # --- End Dependency Check ---
 
           # --- Paths ---
           CODE_DIR="cpi-artifacts/$PKG_ID"        # Source of CPI files
