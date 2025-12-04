@@ -130,11 +130,28 @@ jobs:
           # Read the entire content from the temporary file into the variable
           FULL_ARTIFACT_CONTENT=$(cat "$TEMP_CONTENT_FILE")
           
-          USER_QUERY="Synthesize a single, consolidated technical report following the 10 mandatory sections from the entire set of package artifacts provided below. \n\n\`\`\`text\n$FULL_ARTIFACT_CONTENT\n\`\`\`"
+          # Build the user query text
+          USER_QUERY_TEXT="Synthesize a single, consolidated technical report following the 10 mandatory sections from the entire set of package artifacts provided below. \n\n\`\`\`text\n$FULL_ARTIFACT_CONTENT\n\`\`\`"
           
           # --- API Execution ---
-          PAYLOAD=$(jq -n --arg system "$SYSTEM_PROMPT" --arg query "$USER_QUERY" --arg model "gpt-4o-mini" \
-            '{ model: $model, messages: [{role: "system", content: $system},{role: "user", content: $query}], temperature: 0.1 }')
+          # 🚨 FIX: Pass the complex USER_QUERY_TEXT to jq via a file or pipe (here using EOF marker) 🚨
+          # This ensures that newline characters and special characters within the content are properly
+          # handled and embedded as a single, valid JSON string by jq.
+          
+          PAYLOAD=$(cat <<EOF | jq -n --arg system "$SYSTEM_PROMPT" --arg model "gpt-4o-mini" --slurp --raw-input '
+            {
+              model: $model,
+              messages: [
+                {role: "system", content: $system},
+                # Read the entire input (which is the USER_QUERY_TEXT) and use it as the user content
+                {role: "user", content: .} 
+              ],
+              temperature: 0.1
+            }
+          '
+          $USER_QUERY_TEXT
+          EOF
+          )
           
           MAX_RETRIES=3
           RETRY_COUNT=0
