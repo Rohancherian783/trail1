@@ -98,7 +98,7 @@ jobs:
           fi
           # --- End Dependency Check ---
 
-          # --- API Key Validation (NEW) ---
+          # --- API Key Validation ---
           if [ -z "$OPENAI_API_KEY" ]; then
              echo "::error::OPENAI_API_KEY secret is missing or empty. Cannot generate documentation."
              echo "docs_generated=false" >> $GITHUB_OUTPUT
@@ -142,21 +142,20 @@ jobs:
           USER_QUERY_TEXT="Synthesize a single, consolidated technical report following the 10 mandatory sections from the entire set of package artifacts provided below. \n\n\`\`\`text\n$FULL_ARTIFACT_CONTENT\n\`\`\`"
           
           # --- API Execution ---
-          # Use HEREDOC with jq for safe payload creation
-          PAYLOAD=$(cat <<EOF | jq -n --arg system "$SYSTEM_PROMPT" --arg model "gpt-4o-mini" --slurp --raw-input '
+          # 🚨 FIX: Using `echo "$USER_QUERY_TEXT" | jq...` to pipe the multi-line content directly 
+          # as the input stream (represented by `.`) to the jq script. This reliably handles the multi-line string.
+          
+          PAYLOAD=$(echo "$USER_QUERY_TEXT" | jq -n --arg system "$SYSTEM_PROMPT" --arg model "gpt-4o-mini" --raw-input '
             {
               model: $model,
               messages: [
                 {role: "system", content: $system},
-                # Read the entire input (which is the USER_QUERY_TEXT) and use it as the user content
+                # The '.' here correctly receives the full USER_QUERY_TEXT string piped from echo.
                 {role: "user", content: .} 
               ],
               temperature: 0.1
             }
-          '
-          $USER_QUERY_TEXT
-          EOF
-          )
+          ')
           
           MAX_RETRIES=3
           RETRY_COUNT=0
