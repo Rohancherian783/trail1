@@ -98,6 +98,14 @@ jobs:
           fi
           # --- End Dependency Check ---
 
+          # --- API Key Validation (NEW) ---
+          if [ -z "$OPENAI_API_KEY" ]; then
+             echo "::error::OPENAI_API_KEY secret is missing or empty. Cannot generate documentation."
+             echo "docs_generated=false" >> $GITHUB_OUTPUT
+             exit 1
+          fi
+          # --- End API Key Validation ---
+
           # --- Paths ---
           CODE_DIR="cpi-artifacts/$PKG_ID"        # Source of CPI files
           DOCS_DIR="Documentation/$PKG_ID"        # Destination for the summary
@@ -134,10 +142,7 @@ jobs:
           USER_QUERY_TEXT="Synthesize a single, consolidated technical report following the 10 mandatory sections from the entire set of package artifacts provided below. \n\n\`\`\`text\n$FULL_ARTIFACT_CONTENT\n\`\`\`"
           
           # --- API Execution ---
-          # 🚨 FIX: Pass the complex USER_QUERY_TEXT to jq via a file or pipe (here using EOF marker) 🚨
-          # This ensures that newline characters and special characters within the content are properly
-          # handled and embedded as a single, valid JSON string by jq.
-          
+          # Use HEREDOC with jq for safe payload creation
           PAYLOAD=$(cat <<EOF | jq -n --arg system "$SYSTEM_PROMPT" --arg model "gpt-4o-mini" --slurp --raw-input '
             {
               model: $model,
@@ -155,12 +160,17 @@ jobs:
           
           MAX_RETRIES=3
           RETRY_COUNT=0
-          # Initialize sleep duration for exponential backoff (starting at 1 second)
           SLEEP_TIME=1 
           
           while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-            API_RESPONSE=$(curl -s -X POST "https://api.openai.com/v1/chat/completions" -H "Content-Type: application/json" -H "Authorization: Bearer $OPENAI_API_KEY" -d "$PAYLOAD")
-            GENERATED_TEXT=$(echo "$API_RESPONSE" | jq -r ".choices[0].message.content")
+            # Use curl -w to capture HTTP status code for better error reporting
+            API_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "https://api.openai.com/v1/chat/completions" -H "Content-Type: application/json" -H "Authorization: Bearer $OPENAI_API_KEY" -d "$PAYLOAD")
+            
+            # Split response and status code
+            HTTP_STATUS=$(echo "$API_RESPONSE" | tail -n 1)
+            RESPONSE_BODY=$(echo "$API_RESPONSE" | sed '$d')
+
+            GENERATED_TEXT=$(echo "$RESPONSE_BODY" | jq -r ".choices[0].message.content")
 
             if [ "$GENERATED_TEXT" != "null" ] && [ -n "$GENERATED_TEXT" ]; then
               echo "$GENERATED_TEXT" > "$OUTPUT_FILE"
@@ -168,12 +178,18 @@ jobs:
               break
             else
               RETRY_COUNT=$((RETRY_COUNT + 1))
-              # 🚨 FIX: Use multiplication instead of unsupported exponentiation (**) 🚨
+              
+              if [ "$HTTP_STATUS" -ge 400 ]; then
+                  echo "::error::API call FAILED with HTTP Status $HTTP_STATUS."
+                  echo "Error Response Body: $RESPONSE_BODY"
+              fi
+              
               if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
                   echo "API call failed. Retrying in $SLEEP_TIME seconds..."
                   sleep "$SLEEP_TIME"
-                  # Calculate next sleep time (1, 2, 4, 8, ...)
                   SLEEP_TIME=$((SLEEP_TIME * 2))
+              else
+                  echo "::error::Maximum retries reached. Documentation generation failed."
               fi
             fi
           done
