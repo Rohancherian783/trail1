@@ -59,11 +59,18 @@ jobs:
           
           # --- Main Logic: Find and Process Each iFlow Folder ---
           
-          # Find directories that contain 'iFlowContent.xml', indicating they are iFlow folders
-          IFLOW_FOLDERS=$(find "$BASE_PKG_DIR" -type f -name 'iFlowContent.xml' -exec dirname {} \;)
+          # Find directories that contain 'iFlowContent.xml' or '.iflw', indicating they are iFlow folders
+          # We search for the presence of a key iFlow file and return the directory containing it.
+          IFLOW_FOLDERS=$(find "$BASE_PKG_DIR" -type f \( -name 'iFlowContent.xml' -o -name '*.iflw' \) -exec dirname {} \;)
+          
+          # Get unique parent directories (the actual artifact root, e.g., 'Task1' folder)
+          # We use a secondary 'find' on the unique parents to ensure we get the highest-level artifact directory.
+          # We assume the artifact root is the directory containing 'src', but the most accurate list comes from the file names themselves.
+          # Use 'sort -u' to process each iFlow root folder only once.
+          IFLOW_FOLDERS=$(echo "$IFLOW_FOLDERS" | sort -u | xargs -n 1 dirname | sort -u) # Adjust to get the artifact root
           
           if [ -z "$IFLOW_FOLDERS" ]; then
-              echo "::warning::No iFlows found (no 'iFlowContent.xml' files) in package '$PKG_ID'. Skipping documentation."
+              echo "::warning::No iFlows found (no 'iFlowContent.xml' or '*.iflw' files) in package '$PKG_ID'. Skipping documentation."
               echo "docs_generated=false" >> $GITHUB_OUTPUT
               exit 0
           fi
@@ -71,18 +78,22 @@ jobs:
           ALL_DOCS_GENERATED=false
           
           for IFLOW_DIR in $IFLOW_FOLDERS; do
-            IFLOW_NAME=$(basename "$IFLOW_DIR")
+            # We try to determine the iFlow artifact name from the directory path
+            # This logic might need slight refinement based on your exact repo structure, 
+            # but assumes the immediate parent of 'src' is the artifact name.
+            # Using basename of the folder name for simplicity here.
+            IFLOW_NAME=$(basename "$IFLOW_DIR") 
             OUTPUT_FILE="$IFLOW_DIR/iFlow_Summary.md"
             
             echo "=================================================="
             echo "➡ Processing iFlow: $IFLOW_NAME (in $IFLOW_DIR)"
             
-            # 1. Data Consolidation (ONLY including files *within* the iFlow folder)
+            # 1. Data Consolidation (REMOVED -maxdepth 1 to search recursively for artifacts)
             FULL_ARTIFACT_CONTENT=""
-            FILES_TO_ANALYZE=$(find "$IFLOW_DIR" -maxdepth 1 -type f \( -name 'iFlowContent.xml' -o -name '*.groovy' -o -name '*.xslt' \) -print)
+            FILES_TO_ANALYZE=$(find "$IFLOW_DIR" -type f \( -name 'iFlowContent.xml' -o -name '*.groovy' -o -name '*.xslt' -o -name '*.iflw' \) -print)
             
             if [ -z "$FILES_TO_ANALYZE" ]; then
-                echo "  ⚠️ No supported artifacts found directly in iFlow directory: $IFLOW_DIR. Skipping."
+                echo "  ⚠️ No supported artifacts found recursively in iFlow directory: $IFLOW_DIR. Skipping."
                 continue
             fi
             
