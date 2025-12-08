@@ -1,5 +1,5 @@
 name: 🤖 Generate Single Consolidated Documentation for Package
- 
+
 on:
   workflow_dispatch:
     inputs:
@@ -11,7 +11,7 @@ on:
 jobs:
   document:
     runs-on: ubuntu-latest
- 
+    
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -20,11 +20,11 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y jq
- 
+          
       - name: Generate Consolidated Documentation via OpenAI API
         id: documentation_step
         env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }} 
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           PKG_ID: ${{ github.event.inputs.package_id }}
         run: |
           # --- Configuration ---
@@ -33,7 +33,6 @@ jobs:
           
           PKG_DIR="cpi-artifacts/$PKG_ID"
           OUTPUT_FILE="$PKG_DIR/Package_Summary.md" # The single output file
-
           
           if [ ! -d "$PKG_DIR" ]; then
             echo "::error::Package directory not found at: $PKG_DIR"
@@ -41,10 +40,9 @@ jobs:
             echo "docs_generated=false" >> $GITHUB_OUTPUT
             exit 1
           fi
-
           echo "🔍 Consolidating ALL CPI artifacts into a single request for Package: $PKG_ID"
           
-          # --- Prompt Definitions: STRICT 10-Point Structure ---
+          # --- Prompt Definitions: STRICT 10-Point Structure (UPDATED) ---
           SYSTEM_PROMPT="You are a senior SAP CPI Technical Architect. Your task is to analyze ALL provided code and configuration files from a single CPI package and synthesize them into ONE consolidated Markdown documentation report. You MUST adhere strictly to the following 10-point structure. Consolidate Groovy, XSLT, and iFlow logic into the relevant sections (5, 6, and 7).
           
           The 10 mandatory sections, using Markdown headings, are:
@@ -56,22 +54,21 @@ jobs:
           6. Mapping logic summary (Summarize XSLT, Mappings)
           7. Groovy script explanations (Summarize all scripts and their usage/purpose)
           8. Error handling
-          9. Security/authentication
-          10. Deployment notes"
-
+          9. Security/authentication (Provide detailed explanation of mechanisms, credentials, and configuration)
+          10. High-Level Process Flow Diagram (Output this as a simple flowchart or sequence diagram using Markdown/Mermaid syntax, detailing the main integration steps.)" # Point 10 updated
           
           # --- Data Consolidation ---
           FULL_ARTIFACT_CONTENT=""
           
           # Find all supported files (iFlow XML, Groovy Scripts, XSLT)
           FILES_TO_ANALYZE=$(find "$PKG_DIR" -type f \( -name 'iFlowContent.xml' -o -name '*.groovy' -o -name '*.xslt' \) -print)
-
+          
           if [ -z "$FILES_TO_ANALYZE" ]; then
               echo "::warning::No supported artifacts found in package '$PKG_ID'. Skipping documentation."
               echo "docs_generated=false" >> $GITHUB_OUTPUT
               exit 0
           fi
-
+          
           # Loop through files and append content, clearly labeled, to the FULL_ARTIFACT_CONTENT variable
           for INPUT_FILE in $FILES_TO_ANALYZE; do
             FILE_CONTENT=$(cat "$INPUT_FILE")
@@ -99,7 +96,7 @@ jobs:
               ],
               temperature: 0.1
             }')
-          
+            
           MAX_RETRIES=3
           RETRY_COUNT=0
           
@@ -108,9 +105,9 @@ jobs:
               -H "Content-Type: application/json" \
               -H "Authorization: Bearer $OPENAI_API_KEY" \
               -d "$PAYLOAD")
-
+              
             GENERATED_TEXT=$(echo "$API_RESPONSE" | jq -r ".choices[0].message.content")
-
+            
             if [ "$GENERATED_TEXT" != "null" ] && [ -n "$GENERATED_TEXT" ]; then
               echo "  ✅ Consolidated Documentation generated successfully."
               echo "$GENERATED_TEXT" > "$OUTPUT_FILE"
@@ -131,7 +128,6 @@ jobs:
             echo "docs_generated=false" >> $GITHUB_OUTPUT
           fi
           
- 
       - name: Commit Consolidated Documentation
         if: steps.documentation_step.outputs.docs_generated == 'true'
         run: |
