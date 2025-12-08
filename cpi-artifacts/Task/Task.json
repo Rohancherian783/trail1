@@ -1,0 +1,10 @@
+{
+  "d": {
+    "Id": "Task",
+    "Name": "Task",
+    "Description": "\u003cp\u003e\u003c/p\u003e",
+    "ShortText": "task",
+    "Version": "",
+    "Mode": "EDIT_ALLOWED"
+  }
+}
