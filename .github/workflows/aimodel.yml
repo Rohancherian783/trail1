@@ -14,7 +14,8 @@ jobs:
     
     steps:
       - name: Checkout repository
-        uses: actions:checkout@v4
+        # FIX: Changed 'actions:checkout@v4' to 'actions/checkout@v4'
+        uses: actions/checkout@v4
         
       - name: Install Dependencies (jq only)
         run: |
