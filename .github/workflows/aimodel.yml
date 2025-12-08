@@ -59,36 +59,35 @@ jobs:
           
           # --- Main Logic: Find and Process Each iFlow Folder ---
           
-          # Find directories that contain 'iFlowContent.xml' or '.iflw', indicating they are iFlow folders
-          # We search for the presence of a key iFlow file and return the directory containing it.
-          IFLOW_FOLDERS=$(find "$BASE_PKG_DIR" -type f \( -name 'iFlowContent.xml' -o -name '*.iflw' \) -exec dirname {} \;)
+          # Find all supported iFlow files (iFlowContent.xml or *.iflw) recursively.
+          FULL_IFLOW_PATHS=$(find "$BASE_PKG_DIR" -type f \( -name 'iFlowContent.xml' -o -name '*.iflw' \) -print)
           
-          # Get unique parent directories (the actual artifact root, e.g., 'Task1' folder)
-          # We use a secondary 'find' on the unique parents to ensure we get the highest-level artifact directory.
-          # We assume the artifact root is the directory containing 'src', but the most accurate list comes from the file names themselves.
-          # Use 'sort -u' to process each iFlow root folder only once.
-          IFLOW_FOLDERS=$(echo "$IFLOW_FOLDERS" | sort -u | xargs -n 1 dirname | sort -u) # Adjust to get the artifact root
-          
-          if [ -z "$IFLOW_FOLDERS" ]; then
+          if [ -z "$FULL_IFLOW_PATHS" ]; then
               echo "::warning::No iFlows found (no 'iFlowContent.xml' or '*.iflw' files) in package '$PKG_ID'. Skipping documentation."
               echo "docs_generated=false" >> $GITHUB_OUTPUT
               exit 0
           fi
           
+          # CRITICAL FIX: Extract the top-level iFlow artifact folder name (e.g., 'Task1')
+          # 1. Strip the base package path ($BASE_PKG_DIR/) from the full path.
+          # 2. Cut based on the first slash (/) to get the artifact name (e.g., 'Task1').
+          # 3. Use 'sort -u' to get unique names.
+          IFLOW_ROOT_NAMES=$(echo "$FULL_IFLOW_PATHS" | sed "s|^$BASE_PKG_DIR/||" | cut -d/ -f1 | sort -u)
+          
+          # Reconstruct the full paths for the root directories to loop over
+          IFLOW_FOLDERS=$(echo "$IFLOW_ROOT_NAMES" | xargs -I {} echo "$BASE_PKG_DIR/{}")
+
           ALL_DOCS_GENERATED=false
           
           for IFLOW_DIR in $IFLOW_FOLDERS; do
             # We try to determine the iFlow artifact name from the directory path
-            # This logic might need slight refinement based on your exact repo structure, 
-            # but assumes the immediate parent of 'src' is the artifact name.
-            # Using basename of the folder name for simplicity here.
             IFLOW_NAME=$(basename "$IFLOW_DIR") 
             OUTPUT_FILE="$IFLOW_DIR/iFlow_Summary.md"
             
             echo "=================================================="
             echo "➡ Processing iFlow: $IFLOW_NAME (in $IFLOW_DIR)"
             
-            # 1. Data Consolidation (REMOVED -maxdepth 1 to search recursively for artifacts)
+            # 1. Data Consolidation (Searches recursively from the top-level iFlow folder)
             FULL_ARTIFACT_CONTENT=""
             FILES_TO_ANALYZE=$(find "$IFLOW_DIR" -type f \( -name 'iFlowContent.xml' -o -name '*.groovy' -o -name '*.xslt' -o -name '*.iflw' \) -print)
             
