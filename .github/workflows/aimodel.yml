@@ -48,7 +48,7 @@ jobs:
           7. Groovy script explanations (Summarize all scripts and their usage/purpose)
           8. Error handling
           9. Security/authentication (Provide detailed explanation of mechanisms, credentials, and configuration)
-          10. High-Level Process Flow Diagram(Output this as a simple flowchart or sequence diagram using Markdown/Mermaid syntax, detailing the main integration steps.
+          10. High-Level Process Flow Diagram(Output this as a simple flowchart or sequence diagram using Markdown/Mermaid syntax, detailing the main integration steps.)
           # --- Main Logic: Find and Process Each iFlow Folder ---
           # Find all supported iFlow files (iFlowContent.xml or *.iflw) recursively.
           FULL_IFLOW_PATHS=$(find "$BASE_PKG_DIR" -type f \( -name 'iFlowContent.xml' -o -name '*.iflw' \) -print)
