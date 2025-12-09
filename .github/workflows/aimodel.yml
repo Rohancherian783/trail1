@@ -55,7 +55,7 @@ jobs:
           7. Groovy script explanations (Summarize all scripts and their usage/purpose)
           8. Error handling
           9. Security/authentication (Provide detailed explanation of mechanisms, credentials, and configuration)
-          10. High-Level Process Flow Diagram (Output this using only Mermaid syntax within a \`\`\`mermaid code block. The diagram must be a 'graph TD' (Top-Down) sequence diagram that focuses on the end-to-end integration, showing the major systems involved (e.g., Sender System, CPI, Receiver System) and their interaction points, NOT the low-level iFlow steps like 'Content Modifier' or 'Splitter'. **CRITICAL: Ensure there is one blank line immediately following the closing \`\`\` of the Mermaid block.**)"
+          10. High-Level Process Flow Diagram (Output this using only Mermaid syntax within a \`\`\`mermaid code block. The diagram must be a 'graph TD' (Top-Down) flowchart that focuses on the end-to-end integration, showing the major systems involved (e.g., Sender System, CPI, Receiver System) and their interaction points, NOT the low-level iFlow steps like 'Content Modifier' or 'Splitter'. **CRITICAL: The first line inside the \`\`\`mermaid block MUST be 'graph TD' and there must be one blank line immediately following the closing \`\`\` of the Mermaid block.**)"
           
           # --- Main Logic: Find and Process Each iFlow Folder ---
           
