@@ -29,7 +29,7 @@ jobs:
           PKG_ID: ${{ github.event.inputs.package_id }}
         run: |
           # --- Configuration ---
-          API_URL="https://api.openai.com/v1/chat/completions"
+          API_URL="[https://api.openai.com/v1/chat/completions](https://api.openai.com/v1/chat/completions)"
           MODEL_NAME="gpt-4o-mini"
           
           # Base directory where all artifacts for the package are stored
@@ -55,7 +55,7 @@ jobs:
           7. Groovy script explanations (Summarize all scripts and their usage/purpose)
           8. Error handling
           9. Security/authentication (Provide detailed explanation of mechanisms, credentials, and configuration)
-          10. High-Level Process Flow Diagram (Output this using only Mermaid syntax within a \`\`\`mermaid code block. The diagram must be a 'graph TD' (Top-Down) flowchart that focuses on the end-to-end integration, showing the major systems involved (e.g., Sender System, CPI, Receiver System) and their interaction points, NOT the low-level iFlow steps like 'Content Modifier' or 'Splitter'. **CRITICAL: The first line inside the \`\`\`mermaid block MUST be 'graph TD' and there must be one blank line immediately following the closing \`\`\` of the Mermaid block.**)"
+          10. High-Level Process Flow Diagram (Output this using only Mermaid syntax within a \`\`\`mermaid code block. The diagram must be a 'graph TD' (Top-Down) flowchart that focuses on the end-to-end integration, showing the major systems involved (e.g., Sender System, CPI, Receiver System) and their interaction points, NOT the low-level iFlow steps like 'Content Modifier' or 'Splitter'. **CRITICAL: The first line inside the \`\`\`mermaid block MUST be 'graph TD', the second line MUST be the first node definition (NO BLANK LINES), and there must be one blank line immediately following the closing \`\`\` of the Mermaid block.**)"
           
           # --- Main Logic: Find and Process Each iFlow Folder ---
           
@@ -137,7 +137,6 @@ jobs:
               if [ "$GENERATED_TEXT" != "null" ] && [ -n "$GENERATED_TEXT" ]; then
                 echo "  ✅ Documentation generated successfully."
                 echo "$GENERATED_TEXT" > "$OUTPUT_FILE"
-                echo "  💾 Saved documentation to $OUTPUT_FILE"
                 ALL_DOCS_GENERATED=true
                 break
               else
