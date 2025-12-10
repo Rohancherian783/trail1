@@ -13,7 +13,7 @@ jobs:
       contents: write # Needed to commit the generated documentation
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions:checkout@v4
       - name: Install Dependencies (jq only)
         run: |
           sudo apt-get update
@@ -157,18 +157,22 @@ jobs:
                 CLEAN_IFLOW_NAME=$(echo "$IFLOW_NAME" | sed 's/_/ /g')
                 PROJECT_TITLE="AI Tech Specification Project - Odata Mass PDF upload"
                                 
-                # --- LOGO SETUP ---
-                # 💡 URLs updated to use the Raw Content link for the confirmed files/paths.
+                # --- LOGO SETUP (Using confirmed URLs) ---
                 SAP_LOGO_URL="https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/sap_logo.png"
                 MOTIVEMINDS_LOGO_URL="https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/motiveminds_logo.png"
                 # --- END LOGO SETUP ---
 
-                # 1. Top Right Aligned Logos - Using HTML <img> tags
-                COVER_PAGE_CONTENT="<div style=\"float: right; text-align: right;\">"
-                COVER_PAGE_CONTENT+="<img src=\"$SAP_LOGO_URL\" alt=\"SAP Logo\" width=\"50\" height=\"30\"/>"
-                COVER_PAGE_CONTENT+="&nbsp;&nbsp;"
-                COVER_PAGE_CONTENT+="<img src=\"$MOTIVEMINDS_LOGO_URL\" alt=\"motiveminds Logo\" width=\"80\" height=\"30\"/>"
-                COVER_PAGE_CONTENT+="</div>\n\n\n\n\n\n\n\n\n\n\n"
+                # 1. Top Logo Placement: SAP on Left, Motiveminds on Right
+                # Use two separate floating divs for left/right alignment.
+                
+                # Left (SAP) Logo - Increased size based on visual reference
+                SAP_LOGO_BLOCK="<div style=\"float: left; text-align: left;\"><img src=\"$SAP_LOGO_URL\" alt=\"SAP Logo\" width=\"100\" height=\"40\"/></div>"
+                
+                # Right (Motiveminds) Logo - Adjusted size and margin for visual alignment
+                MOTIVEMINDS_LOGO_BLOCK="<div style=\"float: right; text-align: right;\"><img src=\"$MOTIVEMINDS_LOGO_URL\" alt=\"motiveminds Logo\" width=\"80\" height=\"30\" style=\"margin-top: 5px;\"/></div>"
+
+                # Combine the logo blocks and clear the float
+                COVER_PAGE_CONTENT="${SAP_LOGO_BLOCK}${MOTIVEMINDS_LOGO_BLOCK}<div style=\"clear: both;\"></div>\n\n\n\n\n\n\n"
                                 
                 # 2. Project Title and iFlow Name, styled to match the image
                 FULL_TITLE="$PROJECT_TITLE - $CLEAN_IFLOW_NAME"
@@ -231,5 +235,3 @@ jobs:
               git push
               echo "✅ All iFlow documentation committed and pushed to repository."
           fi
-
-
