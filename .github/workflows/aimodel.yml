@@ -43,12 +43,39 @@ jobs:
           fi
           
           # --- Prompt Definitions: STRICT HIERARCHICAL STRUCTURE (Updated) ---
-          SYSTEM_PROMPT="You are a senior SAP CPI Technical Architect. Your task is to analyze ALL provided code and configuration files from the SINGLE iFlow provided and synthesize them into ONE consolidated Markdown documentation report. You MUST adhere strictly to the following hierarchical 6-point structure, using Markdown headings (# for main sections, ## for subsections). Ensure all technical details (like Groovy, XSLT, Adapters, Security) are thoroughly explained within the relevant sections.
+          SYSTEM_PROMPT="You are a senior SAP CPI Technical Architect. Your task is to analyze ALL provided code and configuration files from the SINGLE iFlow provided and synthesize them into ONE consolidated Markdown documentation report. You MUST adhere strictly to the following hierarchical structure, starting with the Title Page, followed by the Table of Contents, and then the 6 main sections.
 
-          **MANDATORY FIRST SECTION: TABLE OF CONTENTS (TOC) PAGE**
-          The very first output of the document MUST be the Table of Contents. Format the TOC heading using HTML to achieve a prominent blue color and large font, like this: \`<h1 style=\"color: #1f4e79; font-size: 2.5em;\">Table of Contents</h1>\`. Below this heading, list all 6 main sections and their subsections using standard Markdown numbered list syntax (e.g., 1., 1.1., 1.2., etc.), ensuring proper indentation and **avoiding the use of HTML entities like &nbsp; for spacing**. Use a generous number of blank lines (e.g., 10 lines) after the TOC list to create maximum visual separation before starting Section 1.
+          **MANDATORY FIRST SECTION: TITLE PAGE**
+          The very first output of the document MUST be the Title Page, designed to simulate a corporate cover page (Page 1). Use HTML and Markdown for styling.
 
-          The mandatory sections and their required content mapping are:
+          1.  **Logos and Header:** Simulate the header area using centered HTML text. Use placehold.co links for visual placeholders.
+              \`\`\`html
+              <div align=\"center\">
+              <img src=\"https://placehold.co/100x50/00305e/ffffff?text=SAP+Logo\" alt=\"SAP Logo\">
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+              <img src=\"https://placehold.co/100x50/924b95/ffffff?text=Company+Logo\" alt=\"Company Logo\">
+              </div>
+              \`\`\`
+          2.  **Document Title:** Center and style the main title based on the iFlow name provided in the user query (e.g., '[IFLOW NAME] Integration Technical Specification'). Use a prominent, dark blue color.
+              \`\`\`html
+              <br><br><br>
+              <h1 align=\"center\" style=\"color: #1f4e79; font-size: 3em;\">[IFLOW_NAME] Integration Technical Specification</h1>
+              <br><br><br>
+              \`\`\`
+          3.  **Metadata Table:** Create a simple Markdown table for key document metadata. You must provide a default value for each field.
+              \`\`\`markdown
+              | Field | Value |
+              | :--- | :--- |
+              | **Author** | CPI Automation Bot |
+              | **Date** | [Current Date, e.g., 2025-12-10] |
+              | **Version** | 1.0 (Draft) |
+              \`\`\`
+          4.  **Page Break Simulation:** Add a significant vertical space to visually separate the title page content.
+
+          **MANDATORY SECOND SECTION: TABLE OF CONTENTS (TOC)**
+          The TOC MUST appear immediately after the Title Page. Format the TOC heading using HTML to achieve a prominent blue color and large font, like this: \`<h1 style=\"color: #1f4e79; font-size: 2.5em;\">Table of Contents</h1>\`. Below this heading, list all 6 main sections and their subsections using standard Markdown numbered list syntax (e.g., 1., 1.1., 1.2., etc.), ensuring proper indentation. Use a generous number of blank lines (e.g., 18 lines) after the TOC list to create maximum visual separation before starting Section 1.
+
+          **MANDATORY CORE SECTIONS (Following TOC):**
 
           # 1. Introduction
           ## 1.1 Purpose (Map: Purpose of this iFlow)
@@ -120,7 +147,8 @@ jobs:
             
             echo "  Total size of consolidated input: ${#FULL_ARTIFACT_CONTENT} characters."
             
-            USER_QUERY="Synthesize a single, consolidated technical report following the 6 mandatory hierarchical sections and all sub-sections from the set of artifacts provided below, which belong ONLY to the iFlow '$IFLOW_NAME'. \n\n\`\`\`text\n$FULL_ARTIFACT_CONTENT\n\`\`\`"
+            # CRITICAL: Pass the IFLOW_NAME into the user query so the model can insert it into the Title Page.
+            USER_QUERY="Synthesize a single, consolidated technical report following the mandatory Title Page, Table of Contents, and 6 core hierarchical sections from the set of artifacts provided below, which belong ONLY to the iFlow '$IFLOW_NAME'. You MUST use '$IFLOW_NAME' for the document title on the Title Page. \n\n\`\`\`text\n$FULL_ARTIFACT_CONTENT\n\`\`\`"
             
             # 2. API Call Logic
             # Re-creating the PAYLOAD for each iFlow loop (important for scope separation)
