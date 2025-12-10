@@ -41,7 +41,7 @@ jobs:
             exit 1
           fi
           
-          # --- Prompt Definitions: STRICT HIERARCHICAL STRUCTURE (Unchanged) ---
+          # --- Prompt Definitions: STRICT HIERARCHICAL STRUCTURE ---
           SYSTEM_PROMPT="You are a senior SAP CPI Technical Architect. Your task is to analyze ALL provided code and configuration files from the SINGLE iFlow provided and synthesize them into ONE consolidated Markdown documentation report. You MUST adhere strictly to the following hierarchical 6-point structure, using Markdown headings (# for main sections, ## for subsections). Ensure all technical details (like Groovy, XSLT, Adapters, Security) are thoroughly explained within the relevant sections.
           **MANDATORY FIRST SECTION: TABLE OF CONTENTS (TOC) PAGE**
           The very first output of the document MUST be the Table of Contents. Format the TOC heading using HTML to achieve a prominent blue color and large font, like this: \`<h1 style=\"color: #1f4e79; font-size: 2.5em;\">Table of Contents</h1>\`. Below this heading, list all 6 main sections and their subsections using standard Markdown numbered list syntax (e.g., 1., 1.1., 1.2., etc.), ensuring proper indentation and **avoiding the use of HTML entities like &nbsp; for spacing**. Use a generous number of blank lines (e.g., 10 lines) after the TOC list to create maximum visual separation before starting Section 1.
@@ -73,9 +73,6 @@ jobs:
           fi
           
           # CRITICAL FIX: Extract the top-level iFlow artifact folder name (e.g., 'Task1')
-          # 1. Strip the base package path ($BASE_PKG_DIR/) from the full path.
-          # 2. Cut based on the first slash (/) to get the artifact name (e.g., 'Task1').
-          # 3. Use 'sort -u' to get unique names.
           IFLOW_ROOT_NAMES=$(echo "$FULL_IFLOW_PATHS" | sed "s|^$BASE_PKG_DIR/||" | cut -d/ -f1 | sort -u)
           
           # Reconstruct the full paths for the root directories to loop over
@@ -83,9 +80,7 @@ jobs:
           ALL_DOCS_GENERATED=false
           
           for IFLOW_DIR in $IFLOW_FOLDERS; do
-            # We try to determine the iFlow artifact name from the directory path
             IFLOW_NAME=$(basename "$IFLOW_DIR")
-             # 💡 UPDATED: Use the actual iFlow name in the output filename
             OUTPUT_FILE="$IFLOW_DIR/${IFLOW_NAME}_Summary.md"
             
             echo "=================================================="
@@ -113,7 +108,6 @@ jobs:
             USER_QUERY="Synthesize a single, consolidated technical report following the 6 mandatory hierarchical sections and all sub-sections from the set of artifacts provided below, which belong ONLY to the iFlow '$IFLOW_NAME'. \n\n\`\`\`text\n$FULL_ARTIFACT_CONTENT\n\`\`\`"
             
             # 2. API Call Logic
-            # Re-creating the PAYLOAD for each iFlow loop (important for scope separation)
             PAYLOAD=$(jq -n \
               --arg system "$SYSTEM_PROMPT" \
               --arg query "$USER_QUERY" \
@@ -127,7 +121,6 @@ jobs:
                 temperature: 0.1
               }')
               
-            # NEW ERROR CHECK: Check if jq successfully generated the PAYLOAD
             JQ_EXIT_CODE=$?
             if [ $JQ_EXIT_CODE -ne 0 ]; then
                 echo "::error::Failed to construct JSON payload using jq. Exit Code: $JQ_EXIT_CODE"
@@ -150,35 +143,56 @@ jobs:
               if [ "$GENERATED_TEXT" != "null" ] && [ -n "$GENERATED_TEXT" ]; then
                 echo "  ✅ Documentation generated successfully."
 
-                # --- START COVER PAGE GENERATION LOGIC ---
+                # --- START COVER PAGE GENERATION LOGIC (UPDATED FOR BOX STYLE) ---
                 
-                # Static/Default Variables for the Cover Page
-                AUTHOR="Nidhi Srivastava"
-                DATE="2025-12-01"
-                VERSION="Draft"
+                # Dynamic Variables
+                AUTHOR="$(git config user.name)"           # Get Git user name
+                DATE="$(date +%Y-%m-%d)"                   # Dynamic current date
+                VERSION="Draft"                            # Default version
                 PROJECT_TITLE="AI Tech Specification Project"
                 
-                # Cover Page Content using Markdown and HTML for styling
-                # Note: Exact logo placement is hard in MD, this uses an aligned paragraph.
-                COVER_PAGE_CONTENT="<p align=\"right\">SAP / motiveminds</p>\n\n\n\n\n\n"
+                # Start with Top Right Logos/Text
+                COVER_PAGE_CONTENT="<p align=\"right\">SAP / motiveminds</p>\n"
+                
+                # Add vertical spacing
+                for i in $(seq 1 7); do COVER_PAGE_CONTENT+="\n"; done
                 
                 # Project Title and iFlow Name, styled to match the image
-                COVER_PAGE_CONTENT+="<h1 style=\"color: #1f4e79; font-size: 3em; text-align: left; margin-top: 100px;\">$PROJECT_TITLE - $IFLOW_NAME</h1>\n\n\n\n\n\n"
+                COVER_PAGE_CONTENT+="<h1 style=\"color: #1f4e79; font-size: 3em;\">$PROJECT_TITLE - $IFLOW_NAME</h1>\n"
                 
-                # Metadata block using Markdown tables for structure
-                COVER_PAGE_CONTENT+="| Key | Value |\n"
-                COVER_PAGE_CONTENT+="| :--- | :--- |\n"
-                COVER_PAGE_CONTENT+="| Author | $AUTHOR |\n"
-                COVER_PAGE_CONTENT+="| Date | $DATE |\n"
-                COVER_PAGE_CONTENT+="| Version | $VERSION |\n"
+                # Add vertical spacing
+                for i in $(seq 1 12); do COVER_PAGE_CONTENT+="\n"; done
                 
-                # Add enough newlines for visual separation before the TOC
-                COVER_PAGE_CONTENT+="\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n" 
-
+                # Metadata block using HTML tables with borders for the "box" look
+                COVER_PAGE_CONTENT+="<table border=\"1\" style=\"width: 50%; border-collapse: collapse; border-color: #AAAAAA;\">\n"
+                
+                # Row 1: Author
+                COVER_PAGE_CONTENT+="  <tr>\n"
+                COVER_PAGE_CONTENT+="    <td style=\"width: 15%; padding: 5px;\"><b>Author:</b></td>\n"
+                COVER_PAGE_CONTENT+="    <td style=\"width: 35%; padding: 5px;\">$AUTHOR</td>\n"
+                COVER_PAGE_CONTENT+="  </tr>\n"
+                
+                # Row 2: Date
+                COVER_PAGE_CONTENT+="  <tr>\n"
+                COVER_PAGE_CONTENT+="    <td style=\"padding: 5px;\"><b>Date:</b></td>\n"
+                COVER_PAGE_CONTENT+="    <td style=\"padding: 5px;\">$DATE</td>\n"
+                COVER_PAGE_CONTENT+="  </tr>\n"
+                
+                # Row 3: Version
+                COVER_PAGE_CONTENT+="  <tr>\n"
+                COVER_PAGE_CONTENT+="    <td style=\"padding: 5px;\"><b>Version:</b></td>\n"
+                COVER_PAGE_CONTENT+="    <td style=\"padding: 5px;\">$VERSION</td>\n"
+                COVER_PAGE_CONTENT+="  </tr>\n"
+                COVER_PAGE_CONTENT+="</table>\n"
+                
+                # Add sufficient blank lines to push the TOC to the next "page"
+                for i in $(seq 1 20); do COVER_PAGE_CONTENT+="\n"; done
+                
                 # Combine the Cover Page and the AI-generated Content
                 FULL_DOCUMENTATION="${COVER_PAGE_CONTENT}${GENERATED_TEXT}"
                 
-                echo "$FULL_DOCUMENTATION" > "$OUTPUT_FILE"
+                # Use echo -e to ensure newlines (\n) are correctly interpreted and rendered
+                echo -e "$FULL_DOCUMENTATION" > "$OUTPUT_FILE"
                 echo "  💾 Saved documentation with cover page to $OUTPUT_FILE"
                 ALL_DOCS_GENERATED=true
                 # --- END COVER PAGE GENERATION LOGIC ---
@@ -209,12 +223,11 @@ jobs:
           git config user.email "actions@github.com"
           
           PKG_ID="${{ github.event.inputs.package_id }}"
-          # 💡 UPDATED: Use a wildcard to capture all files ending in _Summary.md 
           OUTPUT_PATH="cpi-artifacts/$PKG_ID/**/*_Summary.md"
           
           git add "$OUTPUT_PATH"
           
-          # Check if there are any changes (can be new files or modified files)
+          # Check if there are any changes
           if git diff --cached --quiet "$OUTPUT_PATH"; then
               echo "No meaningful changes detected in the generated documentation files. Skipping commit."
           else
@@ -222,7 +235,6 @@ jobs:
               git push
               echo "✅ All iFlow documentation committed and pushed to repository."
           fi
-
 
 
 
