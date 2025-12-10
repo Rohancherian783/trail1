@@ -1,4 +1,4 @@
-name: 🤖 test Documentation
+name: 🤖 Test Documentation
 
 on:
   workflow_dispatch:
