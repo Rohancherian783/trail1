@@ -45,10 +45,10 @@ jobs:
           # --- Prompt Definitions: STRICT HIERARCHICAL STRUCTURE (Updated) ---
           SYSTEM_PROMPT="You are a senior SAP CPI Technical Architect. Your task is to analyze ALL provided code and configuration files from the SINGLE iFlow provided and synthesize them into ONE consolidated Markdown documentation report. You MUST adhere strictly to the following hierarchical structure, starting with the Title Page, followed by the Table of Contents, and then the 6 main sections.
 
-          **MANDATORY FIRST SECTION: TITLE PAGE (Matching Corporate Template)**
-          The very first output of the document MUST be the Title Page, designed to simulate the corporate cover page (Page 1).
+          **MANDATORY FIRST SECTION: TITLE PAGE (Optimized for Clean Raw Git View)**
+          The very first output of the document MUST be the Title Page (Page 1). Use minimal HTML for styling and maximize standard Markdown for readability in raw GitHub/Git views.
 
-          1.  **Logos and Header:** Align the SAP logo to the left and the partner logo ('motivemnds') to the right on the same line. Use placehold.co links for visual placeholders.
+          1.  **Logos and Header (HTML Required for Alignment):** Align the SAP logo to the left and the partner logo ('motivemnds') to the right on the same line. Use placehold.co links for visual placeholders.
               \`\`\`html
               <div style=\"width: 100%; overflow: hidden; margin-bottom: 20px;\">
                 <div style=\"float: left;\">
@@ -60,25 +60,25 @@ jobs:
               </div>
               <br><br><br>
               \`\`\`
-          2.  **Document Title:** Center and style the main title based on the iFlow name provided in the user query (e.g., '[IFLOW NAME] Integration Technical Specification'). Use a prominent, dark blue color. Add significant vertical spacing before the title.
+          2.  **Document Title (HTML Required for Styling/Centering):** Center and style the main title based on the iFlow name provided in the user query (e.g., '[IFLOW NAME] Integration Technical Specification'). Use a prominent, dark blue color. Add significant vertical spacing before the title.
               \`\`\`html
               <h1 align=\"center\" style=\"color: #1f4e79; font-size: 3em; margin-top: 150px;\">[IFLOW_NAME] Integration Technical Specification</h1>
               <br><br><br>
               \`\`\`
-          3.  **Metadata Table (Updated for Layout):** Create a robust HTML table that resembles the boxed, left-aligned table shown in the screenshot for key document metadata.
-              \`\`\`html
-              <div style=\"width: 400px; border: 1px solid black; padding: 0px; margin-left: 20px; margin-top: 100px;\">
-                <table style=\"width: 100%; border-collapse: collapse; margin: 0;\">
-                  <tr><td style=\"font-weight: bold; padding: 5px; border-right: 1px solid #ddd; width: 30%;\">Author</td><td style=\"padding: 5px;\">[Lead Developer Name]</td></tr>
-                  <tr><td style=\"font-weight: bold; padding: 5px; border-top: 1px solid #ddd; border-right: 1px solid #ddd;\">Date</td><td style=\"padding: 5px; border-top: 1px solid #ddd;\">[Current Date, e.g., 2025-12-10]</td></tr>
-                  <tr><td style=\"font-weight: bold; padding: 5px; border-top: 1px solid #ddd; border-right: 1px solid #ddd;\">Version</td><td style=\"padding: 5px; border-top: 1px solid #ddd;\">1.0 (Draft)</td></tr>
-                </table>
-              </div>
+          3.  **Metadata Table (Pure Markdown Preferred):** Use a standard Markdown table for key document metadata. Add 10 blank lines before and after the table to ensure visual separation in the raw file.
+              \`\`\`markdown
+              \n\n\n\n\n\n\n\n\n\n
+              | Field | Value |
+              |:---|:---|
+              | **Author** | [Lead Developer Name] |
+              | **Date** | [Current Date, e.g., 2025-12-10] |
+              | **Version** | 1.0 (Draft) |
+              \n\n\n\n\n\n\n\n\n\n
               \`\`\`
-          4.  **Page Break Simulation:** Add a significant vertical space (20+ lines) to visually separate the title page content from the TOC.
+          4.  **Page Break Simulation:** Add a significant vertical space (20+ lines, using \`<br>\` or \`\n\n\`) to visually separate the title page content from the TOC.
 
-          **MANDATORY SECOND SECTION: TABLE OF CONTENTS (TOC) (Updated for Indentation)**
-          The TOC MUST appear immediately after the Title Page. Format the TOC heading using HTML to achieve a prominent blue color and large font, like this: \`<h2 style=\"color: #1f4e79; font-size: 2.5em;\">Table of Contents</h2>\`. Below this heading, list all 6 main sections and their subsections using **nested standard Markdown ordered lists**. The model should not use literal \`&nbsp;\` entities or hard-coded numbers (e.g., \`1.1\`, \`1.2\`) for indentation/numbering; instead, use standard nested list syntax (indentation with spaces/tabs) to achieve the hierarchical look. Use a generous number of blank lines (e.g., 10 lines) after the TOC list to create maximum visual separation before starting Section 1.
+          **MANDATORY SECOND SECTION: TABLE OF CONTENTS (TOC)**
+          The TOC MUST appear immediately after the Title Page. Use a level 2 header (\`## Table of Contents\`) and standard Markdown nested ordered lists to generate the TOC. Ensure the list items match the 6 main sections and their subsections. Use 10 blank lines after the TOC list for maximum visual separation before starting Section 1.
 
           **MANDATORY CORE SECTIONS (Following TOC):**
 
