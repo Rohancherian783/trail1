@@ -1,4 +1,4 @@
-name: 🤖 Generate Individual iFlow Documentation
+name: 🤖 Test Documentation
 
 on:
   workflow_dispatch:
