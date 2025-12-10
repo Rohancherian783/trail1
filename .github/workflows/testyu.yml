@@ -16,10 +16,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install Dependencies (jq only)
+      - name: Install Dependencies (jq, pandoc, mermaid-cli)
         run: |
           sudo apt-get update
-          sudo apt-get install -y jq
+          sudo apt-get install -y jq pandoc nodejs npm
+          sudo npm install -g @mermaid-js/mermaid-cli
 
       - name: Generate Individual iFlow Documentation via OpenAI API
         id: documentation_step
@@ -30,19 +31,15 @@ jobs:
           # --- Configuration ---
           API_URL="https://api.openai.com/v1/chat/completions"
           MODEL_NAME="gpt-4o-mini"
-
           BASE_PKG_DIR="cpi-artifacts/$PKG_ID"
 
           if [ ! -d "$BASE_PKG_DIR" ]; then
             echo "::error::Package directory not found at: $BASE_PKG_DIR"
-            echo "::error::Please ensure package artifacts were synced first and the Package ID ('$PKG_ID') is correct."
             echo "docs_generated=false" >> $GITHUB_OUTPUT
             exit 1
           fi
 
-          SYSTEM_PROMPT="You are a senior SAP CPI Technical Architect. Your task is to analyze ALL provided code and configuration files from the SINGLE iFlow provided and synthesize them into ONE consolidated Markdown documentation report. You MUST adhere strictly to the following 10-point structure. Consolidate Groovy, XSLT, and iFlow logic into the relevant sections (5, 6, and 7).
-
-          The 10 mandatory sections are:
+          SYSTEM_PROMPT="You are a senior SAP CPI Technical Architect. Your task is to analyze ALL provided code and configuration files from the SINGLE iFlow provided and synthesize them into ONE consolidated Markdown documentation report. You MUST adhere strictly to the following 10 sections:
           1. High-level architecture
           2. Purpose of this iFlow
           3. Sender/Receiver systems
@@ -57,7 +54,7 @@ jobs:
           FULL_IFLOW_PATHS=$(find "$BASE_PKG_DIR" -type f \( -name 'iFlowContent.xml' -o -name '*.iflw' \) -print)
 
           if [ -z "$FULL_IFLOW_PATHS" ]; then
-            echo "::warning::No iFlows found in package '$PKG_ID'."
+            echo "::warning::No iFlows found in package '$PKG_ID'"
             echo "docs_generated=false" >> $GITHUB_OUTPUT
             exit 0
           fi
@@ -69,7 +66,9 @@ jobs:
 
           for IFLOW_DIR in $IFLOW_FOLDERS; do
             IFLOW_NAME=$(basename "$IFLOW_DIR")
-            OUTPUT_FILE="$IFLOW_DIR/iFlow_Summary.md"
+            MD_FILE="$IFLOW_DIR/iFlow_Summary.md"
+            PNG_FILE="$IFLOW_DIR/iFlow_Diagram.png"
+            DOCX_FILE="$IFLOW_DIR/iFlow_Summary.docx"
 
             echo "=================================================="
             echo "➡ Processing iFlow: $IFLOW_NAME"
@@ -78,19 +77,16 @@ jobs:
             FILES_TO_ANALYZE=$(find "$IFLOW_DIR" -type f \( -name 'iFlowContent.xml' -o -name '*.groovy' -o -name '*.xslt' -o -name '*.iflw' \) -print)
 
             if [ -z "$FILES_TO_ANALYZE" ]; then
-              echo "⚠️ No artifacts inside: $IFLOW_DIR"
+              echo "⚠️ No artifacts found in: $IFLOW_DIR"
               continue
             fi
 
             for INPUT_FILE in $FILES_TO_ANALYZE; do
               FILE_CONTENT=$(cat "$INPUT_FILE")
-              FULL_ARTIFACT_CONTENT+="\n\n--- START ARTIFACT: $INPUT_FILE ---\n"
-              FULL_ARTIFACT_CONTENT+="$FILE_CONTENT"
-              FULL_ARTIFACT_CONTENT+="\n--- END ARTIFACT: $INPUT_FILE ---\n"
+              FULL_ARTIFACT_CONTENT+="\n\n--- START ARTIFACT: $INPUT_FILE ---\n$FILE_CONTENT\n--- END ARTIFACT ---\n"
             done
 
-            USER_QUERY="Synthesize documentation using the 10 sections.
-
+            USER_QUERY="Synthesize documentation using the 10 mandatory sections:
             \`\`\`text
             $FULL_ARTIFACT_CONTENT
             \`\`\`"
@@ -108,6 +104,7 @@ jobs:
                 temperature: 0.1
               }')
 
+            # Retry Logic
             MAX_RETRIES=3
             RETRY_COUNT=0
 
@@ -121,43 +118,57 @@ jobs:
 
               if [ "$GENERATED_TEXT" != "null" ] && [ -n "$GENERATED_TEXT" ]; then
                 echo "  ✅ Documentation generated."
-                echo "$GENERATED_TEXT" > "$OUTPUT_FILE"
+                echo "$GENERATED_TEXT" > "$MD_FILE"
                 ALL_DOCS_GENERATED=true
                 break
               else
-                ERROR_MSG=$(echo "$API_RESPONSE" | jq -r ".error.message // \"Unknown error\"")
                 RETRY_COUNT=$((RETRY_COUNT + 1))
-                DELAY=$((2**RETRY_COUNT))
-                echo "⚠️ API error: $ERROR_MSG (Retry $RETRY_COUNT/$MAX_RETRIES)..."
-                sleep "$DELAY"
+                sleep $((2**RETRY_COUNT))
               fi
             done
 
-            if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
-              echo "❌ Failed to generate documentation for $IFLOW_NAME"
+            # --- Extract Mermaid Block ---
+            MERMAID_CONTENT=$(sed -n '/```mermaid/,/```/p' "$MD_FILE" | sed '1d;$d')
+
+            if [ -n "$MERMAID_CONTENT" ]; then
+              echo "$MERMAID_CONTENT" > "$IFLOW_DIR/diagram.mmd"
+
+              echo "Rendering Mermaid Diagram..."
+              mmdc -i "$IFLOW_DIR/diagram.mmd" -o "$PNG_FILE"
             fi
 
+            # Replace mermaid code block with image reference
+            sed -i "s|```mermaid|![]($PNG_FILE)|g" "$MD_FILE"
+            sed -i "/graph TD/,+10d" "$MD_FILE"
+            sed -i "s|```||g" "$MD_FILE"
+
+            # Generate DOCX using Pandoc
+            pandoc "$MD_FILE" -o "$DOCX_FILE"
+
+            echo "Generated DOCX: $DOCX_FILE"
+
             echo "=================================================="
+
           done
 
           echo "docs_generated=$ALL_DOCS_GENERATED" >> $GITHUB_OUTPUT
 
-      - name: Commit All Generated iFlow Documentation
+      - name: Commit All Generated Documentation
         if: steps.documentation_step.outputs.docs_generated == 'true'
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
 
           PKG_ID="${{ github.event.inputs.package_id }}"
-          OUTPUT_PATH="cpi-artifacts/$PKG_ID/**/iFlow_Summary.md"
+          git add "cpi-artifacts/$PKG_ID/**/iFlow_Summary.md"
+          git add "cpi-artifacts/$PKG_ID/**/iFlow_Summary.docx"
+          git add "cpi-artifacts/$PKG_ID/**/iFlow_Diagram.png"
 
-          git add "$OUTPUT_PATH"
-
-          if git diff --cached --quiet "$OUTPUT_PATH"; then
-            echo "No changes in documentation. Skipping commit."
+          if git diff --cached --quiet; then
+            echo "No new changes. Skipping commit."
           else
-            git commit -m "🤖 DOCS: Generated/Updated iFlow summaries for package: $PKG_ID (GPT-4o mini)."
+            git commit -m "📝 DOCX + Diagram: Documentation updated for package $PKG_ID"
             git push
-            echo "✅ Documentation committed."
           fi
+
 
