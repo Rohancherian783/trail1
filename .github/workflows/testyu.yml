@@ -159,14 +159,14 @@ jobs:
                                 
                 # Cover Page Content using Markdown and HTML for styling
                                 
-                # 1. Top Right Aligned Text
-                COVER_PAGE_CONTENT="<p align=\"right\">SAP / motiveminds</p>\n\n\n\n\n\n"
+                # 1. Top Right Aligned Text - Using CSS float for better header/logo alignment
+                COVER_PAGE_CONTENT="<div style=\"float: right; font-size: 0.9em; color: #555;\">SAP | motiveminds</div>\n\n\n\n\n\n\n"
                                 
                 # 2. Project Title and iFlow Name, styled to match the image
                 FULL_TITLE="$PROJECT_TITLE - $CLEAN_IFLOW_NAME"
                 COVER_PAGE_CONTENT+="<h1 style=\"color: #1f4e79; font-size: 3em; text-align: left; margin-top: 100px;\">$FULL_TITLE</h1>\n\n\n\n\n\n"
                                 
-                # 3. Metadata block - REVERTED TO STRICT Markdown Table for better rendering
+                # 3. Metadata block - Using STRICT Markdown Table for guaranteed box rendering
                 COVER_PAGE_CONTENT+="\n\n\n\n\n\n\n" 
                 COVER_PAGE_CONTENT+="| Key | Value |\n"
                 COVER_PAGE_CONTENT+="| :--- | :--- |\n"
