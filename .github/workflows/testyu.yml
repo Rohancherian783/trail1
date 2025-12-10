@@ -1,4 +1,4 @@
-name: 🤖 test Documentation
+name: 🤖 Test Documentation
 
 on:
   workflow_dispatch:
@@ -191,8 +191,9 @@ jobs:
                 # Combine the Cover Page and the AI-generated Content
                 FULL_DOCUMENTATION="${COVER_PAGE_CONTENT}${GENERATED_TEXT}"
                 
-                # Use echo -e to ensure newlines (\n) are correctly interpreted and rendered
-                echo -e "$FULL_DOCUMENTATION" > "$OUTPUT_FILE"
+                # FIX: Use printf instead of echo -e for reliable writing of content with newlines
+                printf "%b" "$FULL_DOCUMENTATION" > "$OUTPUT_FILE"
+                
                 echo "  💾 Saved documentation with cover page to $OUTPUT_FILE"
                 ALL_DOCS_GENERATED=true
                 # --- END COVER PAGE GENERATION LOGIC ---
