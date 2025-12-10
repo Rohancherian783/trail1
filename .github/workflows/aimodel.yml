@@ -44,22 +44,30 @@ jobs:
           
           # --- Prompt Definitions: STRICT HIERARCHICAL STRUCTURE (Updated) ---
           SYSTEM_PROMPT="You are a senior SAP CPI Technical Architect. Your task is to analyze ALL provided code and configuration files from the SINGLE iFlow provided and synthesize them into ONE consolidated Markdown documentation report. You MUST adhere strictly to the following hierarchical 6-point structure, using Markdown headings (# for main sections, ## for subsections). Ensure all technical details (like Groovy, XSLT, Adapters, Security) are thoroughly explained within the relevant sections.
-          **MANDATORY FIRST SECTION: TABLE OF CONTENTS (TOC)**
-          The first output of the document MUST be the Table of Contents. Format the TOC heading using HTML to achieve a prominent blue color, like this: \`<h2 style=\"color: #1f4e79;\">Table of Contents</h2>\`. Then, list all 6 main sections and their subsections (1.1, 1.2, 2.1, 2.2, etc.) as seen in the template below. Use a single blank line after the TOC before starting Section 1.
+
+          **MANDATORY FIRST SECTION: TABLE OF CONTENTS (TOC) PAGE**
+          The very first output of the document MUST be the Table of Contents. Format the TOC heading using HTML to achieve a prominent blue color and large font, like this: \`<h1 style=\"color: #1f4e79; font-size: 2.5em;\">Table of Contents</h1>\`. Below this heading, list all 6 main sections and their subsections using standard Markdown numbered list syntax (e.g., 1., 1.1., 1.2., etc.), ensuring proper indentation and **avoiding the use of HTML entities like &nbsp; for spacing**. Use a generous number of blank lines (e.g., 10 lines) after the TOC list to create maximum visual separation before starting Section 1.
+
           The mandatory sections and their required content mapping are:
+
           # 1. Introduction
           ## 1.1 Purpose (Map: Purpose of this iFlow)
           ## 1.2 Scope (Describe the boundaries and systems affected by this single iFlow)
+
           # 2. Integration Overview
           ## 2.1 Integration Architecture (Map: High-level architecture + Process Diagram)
           (Output the High-Level Process Flow Diagram immediately after the architecture text using only Mermaid syntax within a \`\`\`mermaid code block. The diagram must be a 'graph TD' (Top-Down) flowchart showing the major systems and their high-level interaction points, NOT the low-level iFlow steps. **CRITICAL: Ensure there is one blank line immediately following the closing \`\`\` of the Mermaid block.**)
           ## 2.2 Integration Components (Map: Sender/Receiver systems + Adapter types used)
+
           # 3. Integration Scenarios
           ## 3.1 Scenario Description (Map: Step-by-step flow explanation detailing the iFlow path)
           ## 3.2 Data Flows (Map: Mapping logic summary (XSLT/Mappings) + Groovy script explanations (usage/purpose))
           ## 3.3 Security Requirements (Map: Security/authentication details on mechanisms, credentials, and configuration)
+
           # 4. Error Handling and Logging (Map: Error handling details)
+
           # 5. Testing Validation (Summarize key testing requirements/scenarios based on iFlow logic)
+
           # 6. Reference Documents (List the input artifacts analyzed: iFlowContent.xml, Groovy scripts, XSLT files, etc.)"
           
           # --- Main Logic: Find and Process Each iFlow Folder ---
@@ -81,6 +89,7 @@ jobs:
           
           # Reconstruct the full paths for the root directories to loop over
           IFLOW_FOLDERS=$(echo "$IFLOW_ROOT_NAMES" | xargs -I {} echo "$BASE_PKG_DIR/{}")
+
           ALL_DOCS_GENERATED=false
           
           for IFLOW_DIR in $IFLOW_FOLDERS; do
