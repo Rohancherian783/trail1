@@ -11,16 +11,18 @@ on:
 jobs:
   document:
     runs-on: ubuntu-latest
-    
+    permissions:
+      contents: write # Needed to commit the generated documentation
+      
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        
+
       - name: Install Dependencies (jq only)
         run: |
           sudo apt-get update
           sudo apt-get install -y jq
-          
+
       - name: Generate Individual iFlow Documentation via OpenAI API
         id: documentation_step
         env:
@@ -85,7 +87,7 @@ jobs:
           for IFLOW_DIR in $IFLOW_FOLDERS; do
             # We try to determine the iFlow artifact name from the directory path
             IFLOW_NAME=$(basename "$IFLOW_DIR")
-             # 💡 UPDATED: Use the actual iFlow name in the output filename
+            # 💡 UPDATED: Use the actual iFlow name in the output filename
             OUTPUT_FILE="$IFLOW_DIR/${IFLOW_NAME}_Summary.md"
             
             echo "=================================================="
@@ -149,30 +151,35 @@ jobs:
               
               if [ "$GENERATED_TEXT" != "null" ] && [ -n "$GENERATED_TEXT" ]; then
                 echo "  ✅ Documentation generated successfully."
-                # --- START COVER PAGE GENERATION LOGIC ---
+                # --- START COVER PAGE GENERATION LOGIC (FIXED) ---
                 
                 # Static/Default Variables for the Cover Page
                 AUTHOR="Nidhi Srivastava"
                 DATE="2025-12-01"
                 VERSION="Draft"
+                
+                # Use sed to replace underscores with spaces for a cleaner title
+                CLEAN_IFLOW_NAME=$(echo "$IFLOW_NAME" | sed 's/_/ /g')
                 PROJECT_TITLE="AI Tech Specification Project"
                 
                 # Cover Page Content using Markdown and HTML for styling
-                # Note: Exact logo placement is hard in MD, this uses an aligned paragraph.
+                
+                # 1. Top Right Aligned Text
                 COVER_PAGE_CONTENT="<p align=\"right\">SAP / motiveminds</p>\n\n\n\n\n\n"
                 
-                # Project Title and iFlow Name, styled to match the image
-                COVER_PAGE_CONTENT+="<h1 style=\"color: #1f4e79; font-size: 3em; text-align: left; margin-top: 100px;\">$PROJECT_TITLE - $IFLOW_NAME</h1>\n\n\n\n\n\n"
+                # 2. Project Title and iFlow Name, styled to match the image
+                COVER_PAGE_CONTENT+="<h1 style=\"color: #1f4e79; font-size: 3em; text-align: left; margin-top: 100px;\">$PROJECT_TITLE - $CLEAN_IFLOW_NAME</h1>\n\n\n\n\n\n"
                 
-                # Metadata block using Markdown tables for structure
+                # 3. Metadata block
                 COVER_PAGE_CONTENT+="| Key | Value |\n"
                 COVER_PAGE_CONTENT+="| :--- | :--- |\n"
                 COVER_PAGE_CONTENT+="| Author | $AUTHOR |\n"
                 COVER_PAGE_CONTENT+="| Date | $DATE |\n"
                 COVER_PAGE_CONTENT+="| Version | $VERSION |\n"
                 
-                # Add enough newlines for visual separation before the TOC
-                COVER_PAGE_CONTENT+="\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n" 
+                # 4. Add enough newlines for visual separation before the TOC
+                COVER_PAGE_CONTENT+="\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"
+                
                 # Combine the Cover Page and the AI-generated Content
                 FULL_DOCUMENTATION="${COVER_PAGE_CONTENT}${GENERATED_TEXT}"
                 
@@ -199,7 +206,7 @@ jobs:
           
           # Set final output status
           echo "docs_generated=$ALL_DOCS_GENERATED" >> $GITHUB_OUTPUT
-          
+
       - name: Commit All Generated iFlow Documentation
         if: steps.documentation_step.outputs.docs_generated == 'true'
         run: |
@@ -207,7 +214,7 @@ jobs:
           git config user.email "actions@github.com"
           
           PKG_ID="${{ github.event.inputs.package_id }}"
-          # 💡 UPDATED: Use a wildcard to capture all files ending in _Summary.md 
+          # 💡 UPDATED: Use a wildcard to capture all files ending in _Summary.md
           OUTPUT_PATH="cpi-artifacts/$PKG_ID/**/*_Summary.md"
           
           git add "$OUTPUT_PATH"
