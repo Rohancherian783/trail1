@@ -16,11 +16,18 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install Dependencies (jq, pandoc, mermaid-cli)
+      - name: Install Dependencies (jq, pandoc, mermaid-cli, chromium)
         run: |
           sudo apt-get update
-          sudo apt-get install -y jq pandoc nodejs npm
+
+          # Install required system packages
+          sudo apt-get install -y jq pandoc nodejs npm chromium-browser
+
+          # Install Mermaid CLI globally
           sudo npm install -g @mermaid-js/mermaid-cli
+
+          # Make Chromium path available to Puppeteer
+          echo "PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser" >> $GITHUB_ENV
 
       - name: Generate Individual iFlow Documentation via OpenAI API
         id: documentation_step
@@ -28,7 +35,7 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           PKG_ID: ${{ github.event.inputs.package_id }}
         run: |
-          # --- Configuration ---
+          # --- CONFIGURATION ---
           API_URL="https://api.openai.com/v1/chat/completions"
           MODEL_NAME="gpt-4o-mini"
           BASE_PKG_DIR="cpi-artifacts/$PKG_ID"
@@ -39,7 +46,7 @@ jobs:
             exit 1
           fi
 
-          SYSTEM_PROMPT="You are a senior SAP CPI Technical Architect. Your task is to analyze ALL provided code and configuration files from the SINGLE iFlow provided and synthesize them into ONE consolidated Markdown documentation report. You MUST adhere strictly to the following 10 sections:
+          SYSTEM_PROMPT="You are a senior SAP CPI Technical Architect. Produce a 10-section Markdown documentation:
           1. High-level architecture
           2. Purpose of this iFlow
           3. Sender/Receiver systems
@@ -51,10 +58,10 @@ jobs:
           9. Security/authentication
           10. High-Level Process Flow Diagram (Mermaid 'graph TD')"
 
-          FULL_IFLOW_PATHS=$(find "$BASE_PKG_DIR" -type f \( -name 'iFlowContent.xml' -o -name '*.iflw' \) -print)
-
+          # Detect iFlow folders
+          FULL_IFLOW_PATHS=$(find "$BASE_PKG_DIR" -type f \( -name 'iFlowContent.xml' -o -name '*.iflw' \))
           if [ -z "$FULL_IFLOW_PATHS" ]; then
-            echo "::warning::No iFlows found in package '$PKG_ID'"
+            echo "::warning::No iFlows found."
             echo "docs_generated=false" >> $GITHUB_OUTPUT
             exit 0
           fi
@@ -64,6 +71,7 @@ jobs:
 
           ALL_DOCS_GENERATED=false
 
+          # --- PROCESS EACH IFLOW ---
           for IFLOW_DIR in $IFLOW_FOLDERS; do
             IFLOW_NAME=$(basename "$IFLOW_DIR")
             MD_FILE="$IFLOW_DIR/iFlow_Summary.md"
@@ -73,23 +81,15 @@ jobs:
             echo "=================================================="
             echo "➡ Processing iFlow: $IFLOW_NAME"
 
+            # Collect all artifacts
             FULL_ARTIFACT_CONTENT=""
-            FILES_TO_ANALYZE=$(find "$IFLOW_DIR" -type f \( -name 'iFlowContent.xml' -o -name '*.groovy' -o -name '*.xslt' -o -name '*.iflw' \) -print)
-
-            if [ -z "$FILES_TO_ANALYZE" ]; then
-              echo "⚠️ No artifacts found in: $IFLOW_DIR"
-              continue
-            fi
+            FILES_TO_ANALYZE=$(find "$IFLOW_DIR" -type f \( -name 'iFlowContent.xml' -o -name '*.groovy' -o -name '*.xslt' -o -name '*.iflw' \))
 
             for INPUT_FILE in $FILES_TO_ANALYZE; do
-              FILE_CONTENT=$(cat "$INPUT_FILE")
-              FULL_ARTIFACT_CONTENT+="\n\n--- START ARTIFACT: $INPUT_FILE ---\n$FILE_CONTENT\n--- END ARTIFACT ---\n"
+              FULL_ARTIFACT_CONTENT+="\n\n--- START ARTIFACT: $INPUT_FILE ---\n$(cat "$INPUT_FILE")\n--- END ARTIFACT ---\n"
             done
 
-            USER_QUERY="Synthesize documentation using the 10 mandatory sections:
-            \`\`\`text
-            $FULL_ARTIFACT_CONTENT
-            \`\`\`"
+            USER_QUERY="Synthesize documentation:\n\`\`\`text\n$FULL_ARTIFACT_CONTENT\n\`\`\`"
 
             PAYLOAD=$(jq -n \
               --arg system "$SYSTEM_PROMPT" \
@@ -104,7 +104,7 @@ jobs:
                 temperature: 0.1
               }')
 
-            # Retry Logic
+            # --- API RETRY LOGIC ---
             MAX_RETRIES=3
             RETRY_COUNT=0
 
@@ -127,28 +127,26 @@ jobs:
               fi
             done
 
-            # --- Extract Mermaid Block ---
+            # --- EXTRACT MERMAID CODE ---
             MERMAID_CONTENT=$(sed -n '/```mermaid/,/```/p' "$MD_FILE" | sed '1d;$d')
 
             if [ -n "$MERMAID_CONTENT" ]; then
               echo "$MERMAID_CONTENT" > "$IFLOW_DIR/diagram.mmd"
 
               echo "Rendering Mermaid Diagram..."
-              mmdc -i "$IFLOW_DIR/diagram.mmd" -o "$PNG_FILE"
+              mmdc -i "$IFLOW_DIR/diagram.mmd" -o "$PNG_FILE" --puppeteerConfigFile /dev/null
             fi
 
-            # Replace mermaid code block with image reference
+            # Replace mermaid block with PNG reference
             sed -i "s|```mermaid|![]($PNG_FILE)|g" "$MD_FILE"
             sed -i "/graph TD/,+10d" "$MD_FILE"
             sed -i "s|```||g" "$MD_FILE"
 
-            # Generate DOCX using Pandoc
+            # --- CONVERT MARKDOWN → DOCX ---
             pandoc "$MD_FILE" -o "$DOCX_FILE"
 
-            echo "Generated DOCX: $DOCX_FILE"
-
+            echo "📄 Generated DOCX: $DOCX_FILE"
             echo "=================================================="
-
           done
 
           echo "docs_generated=$ALL_DOCS_GENERATED" >> $GITHUB_OUTPUT
@@ -160,15 +158,17 @@ jobs:
           git config user.email "actions@github.com"
 
           PKG_ID="${{ github.event.inputs.package_id }}"
+
           git add "cpi-artifacts/$PKG_ID/**/iFlow_Summary.md"
           git add "cpi-artifacts/$PKG_ID/**/iFlow_Summary.docx"
           git add "cpi-artifacts/$PKG_ID/**/iFlow_Diagram.png"
 
           if git diff --cached --quiet; then
-            echo "No new changes. Skipping commit."
+            echo "No changes detected. Skip commit."
           else
-            git commit -m "📝 DOCX + Diagram: Documentation updated for package $PKG_ID"
+            git commit -m "📄 DOCX + PNG Diagram: Documentation generated for package $PKG_ID"
             git push
           fi
+
 
 
