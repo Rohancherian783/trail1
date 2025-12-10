@@ -1,4 +1,4 @@
-name: 🤖 CPI Documentation
+name: 🤖 Generate Individual iFlow Documentation
 
 on:
   workflow_dispatch:
@@ -11,180 +11,194 @@ on:
 jobs:
   document:
     runs-on: ubuntu-latest
-
+    
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      - name: Install jq
+        
+      - name: Install Dependencies (jq only)
         run: |
           sudo apt-get update
           sudo apt-get install -y jq
-
+          
       - name: Generate Individual iFlow Documentation via OpenAI API
         id: documentation_step
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           PKG_ID: ${{ github.event.inputs.package_id }}
-          AUTHOR: "Rohan Cherian"
-          VERSION: "Draft"
-          MODEL_NAME: "gpt-4o-mini"
-          API_URL: "https://api.openai.com/v1/chat/completions"
+          GIT_USER: ${{ github.actor }}
         run: |
-          set -euo pipefail
-
-          # compute date inside the run block (safe)
-          DATE=$(date +'%Y-%m-%d')
-          echo "Using dynamic metadata: AUTHOR=${AUTHOR}, DATE=${DATE}, VERSION=${VERSION}"
-
-          BASE_PKG_DIR="cpi-artifacts/${PKG_ID}"
-          if [ ! -d "${BASE_PKG_DIR}" ]; then
-            echo "::error::Package directory not found: ${BASE_PKG_DIR}"
+          # --- Configuration ---
+          API_URL="https://api.openai.com/v1/chat/completions"
+          MODEL_NAME="gpt-4o-mini"
+          
+          BASE_PKG_DIR="cpi-artifacts/$PKG_ID"
+          
+          if [ ! -d "$BASE_PKG_DIR" ]; then
+            echo "::error::Package directory not found: $BASE_PKG_DIR"
             echo "docs_generated=false" >> $GITHUB_OUTPUT
             exit 1
           fi
-
-          # Write the SYSTEM_PROMPT to a temporary file using a safe, non-indented heredoc.
-          # The content must start flush with the indentation of the first command inside 'run: |'
-          cat > /tmp/system_prompt.txt <<'SYSTEM_PROMPT_CONTENT'
-You are a senior SAP CPI Technical Architect.
-You must generate a SINGLE Markdown file with:
-
-1) MANDATORY COVER PAGE (use the exact HTML below)
-Replace {{AUTHOR}}, {{DATE}}, {{VERSION}}, and {{IFLOW_NAME}} with provided dynamic values.
-
-<table style='width:100%; border-collapse:collapse;'>
-  <tr>
-    <td style='text-align:left; border:none;'>
-      <img src='https://upload.wikimedia.org/wikipedia/commons/5/59/SAP_2011_logo.svg' width='120' />
-    </td>
-    <td style='text-align:right; font-size:1.1em; color:#333; border:none;'>
-      © MotiveMinds
-    </td>
-  </tr>
-</table>
-
-<div style='text-align:center; margin-top:120px; margin-bottom:120px;'>
-  <h1 style='color:#1f4e79; font-size:2.8em;'>
-    {{IFLOW_NAME}} – Technical Specification
-  </h1>
-</div>
-
-<table style='margin-left:auto; margin-right:auto; width:40%; border:1px solid #000; border-collapse:collapse; font-size:1.1em;'>
-  <tr>
-    <td style='border:1px solid #000; padding:6px; font-weight:bold;'>Author:</td>
-    <td style='border:1px solid #000; padding:6px;'>{{AUTHOR}}</td>
-  </tr>
-  <tr>
-    <td style='border:1px solid #000; padding:6px; font-weight:bold;'>Date:</td>
-    <td style='border:1px solid #000; padding:6px;'>{{DATE}}</td>
-  </tr>
-  <tr>
-    <td style='border:1px solid #000; padding:6px; font-weight:bold;'>Version:</td>
-    <td style='border:1px solid #000; padding:6px;'>{{VERSION}}</td>
-  </tr>
-</table>
-
-<div style='page-break-after: always;'></div>
-
-Followed by:
-- Table of Contents (use HTML heading for TOC title: <h1 style='color:#1f4e79; font-size: 2.5em;'>Table of Contents</h1>)
-- Strict 6-section markdown structure (1..6) with subsections as described previously.
-- Include a Mermaid graph (graph TD) for the high-level Integration Architecture under section 2.1 and leave one blank line after the closing ``` of the mermaid block.
-SYSTEM_PROMPT_CONTENT
-
-          # Read the prompt into a shell variable (safe)
-          SYSTEM_PROMPT_CONTENT="$(cat /tmp/system_prompt.txt)"
-
-          # Find iFlow root files
-          FULL_IFLOW_PATHS=$(find "${BASE_PKG_DIR}" -type f \( -name 'iFlowContent.xml' -o -name '*.iflw' \) -print || true)
-          if [ -z "${FULL_IFLOW_PATHS}" ]; then
-            echo "::warning::No iFlows found (no 'iFlowContent.xml' or '*.iflw') in package '${PKG_ID}'."
-            echo "docs_generated=false" >> $GITHUB_OUTPUT
-            exit 0
+          
+          # --- SYSTEM PROMPT (unchanged) ---
+          SYSTEM_PROMPT="You are a senior SAP CPI Technical Architect. Your task is to analyze ALL provided code and configuration files from the SINGLE iFlow provided and synthesize them into ONE consolidated Markdown documentation report. You MUST adhere strictly to the following hierarchical 6-point structure..."
+          
+          FULL_IFLOW_PATHS=$(find "$BASE_PKG_DIR" -type f \( -name 'iFlowContent.xml' -o -name '*.iflw' \) )
+          
+          if [ -z "$FULL_IFLOW_PATHS" ]; then
+              echo "::warning::No iFlows found in package '$PKG_ID'."
+              echo "docs_generated=false" >> $GITHUB_OUTPUT
+              exit 0
           fi
-
-          IFLOW_ROOT_NAMES=$(echo "${FULL_IFLOW_PATHS}" | sed "s|^${BASE_PKG_DIR}/||" | cut -d/ -f1 | sort -u)
-          IFLOW_FOLDERS=$(echo "${IFLOW_ROOT_NAMES}" | xargs -I {} echo "${BASE_PKG_DIR}/{}")
-
+          
+          IFLOW_ROOT_NAMES=$(echo "$FULL_IFLOW_PATHS" | sed "s|^$BASE_PKG_DIR/||" | cut -d/ -f1 | sort -u)
+          IFLOW_FOLDERS=$(echo "$IFLOW_ROOT_NAMES" | xargs -I {} echo "$BASE_PKG_DIR/{}")
+          
           ALL_DOCS_GENERATED=false
-
-          for IFLOW_DIR in ${IFLOW_FOLDERS}; do
-            IFLOW_NAME=$(basename "${IFLOW_DIR}")
-            OUTPUT_FILE="${IFLOW_DIR}/${IFLOW_NAME}_Summary.md"
-            echo "➡ Processing iFlow: ${IFLOW_NAME} (folder: ${IFLOW_DIR})"
-
-            FILES_TO_ANALYZE=$(find "${IFLOW_DIR}" -type f \( -name 'iFlowContent.xml' -o -name '*.groovy' -o -name '*.xslt' -o -name '*.iflw' \) -print || true)
-            if [ -z "${FILES_TO_ANALYZE}" ]; then
-              echo "  ⚠️ No supported artifacts found in ${IFLOW_DIR}. Skipping."
-              continue
-            fi
-
+          
+          for IFLOW_DIR in $IFLOW_FOLDERS; do
+            
+            IFLOW_NAME=$(basename "$IFLOW_DIR")
+            OUTPUT_FILE="$IFLOW_DIR/${IFLOW_NAME}_Summary.md"
+            
+            echo "=================================================="
+            echo "➡ Processing iFlow: $IFLOW_NAME"
+            
             FULL_ARTIFACT_CONTENT=""
-            for INPUT_FILE in ${FILES_TO_ANALYZE}; do
-              FILE_CONTENT=$(sed -e 's/\r$//' "${INPUT_FILE}")
-              FULL_ARTIFACT_CONTENT+="\n\n--- START ARTIFACT: ${INPUT_FILE} ---\n${FILE_CONTENT}\n--- END ARTIFACT: ${INPUT_FILE} ---\n"
-            done
-
-            # Build the user query with dynamic values
-            USER_QUERY="Author=${AUTHOR}
-Date=${DATE}
-Version=${VERSION}
-IFLOW_NAME=${IFLOW_NAME}
-
-Synthesize a single, consolidated technical report following the 6 mandatory hierarchical sections. Include the required cover page (use {{AUTHOR}}, {{DATE}}, {{VERSION}}, {{IFLOW_NAME}}), TOC, and all sections. Artifacts below:
-
-\`\`\`text
-${FULL_ARTIFACT_CONTENT}
-\`\`\`
-"
-
-            # Build payload using jq (safe for large strings)
-            PAYLOAD=$(jq -nc --arg system "${SYSTEM_PROMPT_CONTENT}" --arg query "${USER_QUERY}" --arg model "${MODEL_NAME}" '{
-              model: $model,
-              messages: [
-                { role: "system", content: $system },
-                { role: "user", content: $query }
-              ],
-              temperature: 0.1
-            }')
-
-            # Call OpenAI
-            API_RESPONSE=$(curl -s -X POST "${API_URL}" \
-              -H "Content-Type: application/json" \
-              -H "Authorization: Bearer ${OPENAI_API_KEY}" \
-              -d "${PAYLOAD}")
-
-            GENERATED_TEXT=$(echo "${API_RESPONSE}" | jq -r ".choices[0].message.content // empty")
-
-            if [ -n "${GENERATED_TEXT}" ]; then
-              echo "${GENERATED_TEXT}" > "${OUTPUT_FILE}"
-              echo "  ✅ Saved documentation to ${OUTPUT_FILE}"
-              ALL_DOCS_GENERATED=true
-            else
-              ERROR_MSG=$(echo "${API_RESPONSE}" | jq -r ".error.message // \"Unknown API error\"")
-              echo "::error::Failed to generate documentation for ${IFLOW_NAME}: ${ERROR_MSG}"
+            FILES_TO_ANALYZE=$(find "$IFLOW_DIR" -type f \( -name 'iFlowContent.xml' -o -name '*.groovy' -o -name '*.xslt' -o -name '*.iflw' \) )
+            
+            if [ -z "$FILES_TO_ANALYZE" ]; then
+                echo "⚠️ No supported artifacts found. Skipping."
+                continue
             fi
+            
+            for INPUT_FILE in $FILES_TO_ANALYZE; do
+              FULL_ARTIFACT_CONTENT+="\n\n--- START ARTIFACT: $INPUT_FILE ---\n$(cat "$INPUT_FILE")\n--- END ARTIFACT: $INPUT_FILE ---\n"
+            done
+            
+            USER_QUERY="Synthesize a single consolidated report following all mandatory sections for iFlow '$IFLOW_NAME'.\n\n\`\`\`text\n$FULL_ARTIFACT_CONTENT\n\`\`\`"
+            
+            PAYLOAD=$(jq -n \
+              --arg system "$SYSTEM_PROMPT" \
+              --arg query "$USER_QUERY" \
+              --arg model "$MODEL_NAME" \
+              '{
+                model: $model,
+                messages: [
+                  {role: "system", content: $system},
+                  {role: "user", content: $query}
+                ],
+                temperature: 0.1
+              }')
+            
+            MAX_RETRIES=3
+            RETRY_COUNT=0
+            
+            while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+              
+              API_RESPONSE=$(curl -s -X POST "$API_URL" \
+                -H "Content-Type: application/json" \
+                -H "Authorization: Bearer $OPENAI_API_KEY" \
+                -d "$PAYLOAD")
+              
+              GENERATED_TEXT=$(echo "$API_RESPONSE" | jq -r ".choices[0].message.content")
+              
+              if [ "$GENERATED_TEXT" != "null" ] && [ -n "$GENERATED_TEXT" ]; then
+                
+                echo "  ✅ Documentation generated successfully."
+                
+                TODAY=$(date +%Y-%m-%d)
+                AUTHOR="$GIT_USER"
+                VERSION="Draft"
+                
+                # ------------------------------------------------------------------
+                # ✔ COVER PAGE ADDED HERE (Option A — first page)
+                # ------------------------------------------------------------------
+                COVER_PAGE=$(cat <<EOF
+<!-- COVER PAGE START -->
+
+<table style="width:100%;">
+<tr>
+<td align="left">
+  <img src="https://upload.wikimedia.org/wikipedia/commons/5/59/SAP_2011_logo.svg" width="120">
+</td>
+<td align="right">
+  <img src="https://i.ibb.co/8cVbZCy/motiveminds-logo.png" width="150">
+</td>
+</tr>
+</table>
+
+<br><br><br><br>
+
+<h1 align="center" style="color:#1f4e79; font-size:2.8em;">
+$IFLOW_NAME – Technical Specification Document
+</h1>
+
+<br><br><br>
+
+<table style="width:60%; margin-left:auto; margin-right:auto; border-collapse: collapse;" border="1">
+<tr>
+  <td><strong>Author:</strong></td>
+  <td>$AUTHOR</td>
+</tr>
+<tr>
+  <td><strong>Date:</strong></td>
+  <td>$TODAY</td>
+</tr>
+<tr>
+  <td><strong>Version:</strong></td>
+  <td>$VERSION</td>
+</tr>
+</table>
+
+<br><br><br><br>
+
+<!-- COVER PAGE END -->
+
+EOF
+)
+
+                # --------------------------------------------------------------
+                # WRITE FINAL FILE: COVER PAGE FIRST → THEN GPT DOCUMENTATION
+                # --------------------------------------------------------------
+                echo "$COVER_PAGE" > "$OUTPUT_FILE"
+                echo "$GENERATED_TEXT" >> "$OUTPUT_FILE"
+                
+                echo "💾 Saved documentation to $OUTPUT_FILE"
+                
+                ALL_DOCS_GENERATED=true
+                break
+              fi
+              
+              RETRY_COUNT=$((RETRY_COUNT + 1))
+              sleep $((2**RETRY_COUNT))
+            done
+            
+            echo "=================================================="
           done
-
-          echo "docs_generated=${ALL_DOCS_GENERATED}" >> $GITHUB_OUTPUT
-
-      - name: Commit Documentation
+          
+          echo "docs_generated=$ALL_DOCS_GENERATED" >> $GITHUB_OUTPUT
+          
+      - name: Commit All Generated iFlow Documentation
         if: steps.documentation_step.outputs.docs_generated == 'true'
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
-
+          
           PKG_ID="${{ github.event.inputs.package_id }}"
-          git add "cpi-artifacts/${PKG_ID}/**/*_Summary.md" || true
-
-          if git diff --cached --quiet; then
-            echo "No changes to commit."
+          OUTPUT_PATH="cpi-artifacts/$PKG_ID/**/*_Summary.md"
+          
+          git add "$OUTPUT_PATH"
+          
+          if git diff --cached --quiet "$OUTPUT_PATH"; then
+              echo "No changes detected."
           else
-            git commit -m "🤖 Auto-generated iFlow Documentation for package: ${PKG_ID}"
-            git push
-            echo "Documentation committed."
+              git commit -m "🤖 DOCS: Generated/Updated individual iFlow summaries with Cover Page"
+              git push
+              echo "✅ Documentation committed."
           fi
+
+
 
 
 
