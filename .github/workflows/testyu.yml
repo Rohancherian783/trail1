@@ -1,4 +1,4 @@
-name: 🤖 Test Documentation
+name: 🤖 test Documentation
 
 on:
   workflow_dispatch:
@@ -143,7 +143,7 @@ jobs:
               if [ "$GENERATED_TEXT" != "null" ] && [ -n "$GENERATED_TEXT" ]; then
                 echo "  ✅ Documentation generated successfully."
 
-                # --- START COVER PAGE GENERATION LOGIC (UPDATED FOR BOX STYLE) ---
+                # --- START COVER PAGE GENERATION LOGIC (FINAL ROBUST VERSION) ---
                 
                 # Dynamic Variables
                 AUTHOR="$(git config user.name)"           # Get Git user name
@@ -151,48 +151,38 @@ jobs:
                 VERSION="Draft"                            # Default version
                 PROJECT_TITLE="AI Tech Specification Project"
                 
-                # Start with Top Right Logos/Text
-                COVER_PAGE_CONTENT="<p align=\"right\">SAP / motiveminds</p>\n"
+                # Build Cover Page Content using printf for safe variable expansion and newlines
+                COVER_PAGE_CONTENT=$(printf "%b" "
+<p align=\"right\">SAP / motiveminds</p>
+
+\n\n\n\n\n\n\n
+<h1 style=\"color: #1f4e79; font-size: 3em;\">$PROJECT_TITLE - $IFLOW_NAME</h1>
+
+\n\n\n\n\n\n\n\n\n\n\n\n
+<table border=\"1\" style=\"width: 50%; border-collapse: collapse; border-color: #AAAAAA;\">
+  <tr>
+    <td style=\"width: 15%; padding: 5px;\"><b>Author:</b></td>
+    <td style=\"width: 35%; padding: 5px;\">$AUTHOR</td>
+  </tr>
+  <tr>
+    <td style=\"padding: 5px;\"><b>Date:</b></td>
+    <td style=\"padding: 5px;\">$DATE</td>
+  </tr>
+  <tr>
+    <td style=\"padding: 5px;\"><b>Version:</b></td>
+    <td style=\"padding: 5px;\">$VERSION</td>
+  </tr>
+</table>
+
+\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n
+")
                 
-                # Add vertical spacing
-                for i in $(seq 1 7); do COVER_PAGE_CONTENT+="\n"; done
+                # Use a two-step printf to write the content safely to the file.
+                # 1. Write the Cover Page (overwrites any previous content)
+                printf "%b" "$COVER_PAGE_CONTENT" > "$OUTPUT_FILE"
                 
-                # Project Title and iFlow Name, styled to match the image
-                COVER_PAGE_CONTENT+="<h1 style=\"color: #1f4e79; font-size: 3em;\">$PROJECT_TITLE - $IFLOW_NAME</h1>\n"
-                
-                # Add vertical spacing
-                for i in $(seq 1 12); do COVER_PAGE_CONTENT+="\n"; done
-                
-                # Metadata block using HTML tables with borders for the "box" look
-                COVER_PAGE_CONTENT+="<table border=\"1\" style=\"width: 50%; border-collapse: collapse; border-color: #AAAAAA;\">\n"
-                
-                # Row 1: Author
-                COVER_PAGE_CONTENT+="  <tr>\n"
-                COVER_PAGE_CONTENT+="    <td style=\"width: 15%; padding: 5px;\"><b>Author:</b></td>\n"
-                COVER_PAGE_CONTENT+="    <td style=\"width: 35%; padding: 5px;\">$AUTHOR</td>\n"
-                COVER_PAGE_CONTENT+="  </tr>\n"
-                
-                # Row 2: Date
-                COVER_PAGE_CONTENT+="  <tr>\n"
-                COVER_PAGE_CONTENT+="    <td style=\"padding: 5px;\"><b>Date:</b></td>\n"
-                COVER_PAGE_CONTENT+="    <td style=\"padding: 5px;\">$DATE</td>\n"
-                COVER_PAGE_CONTENT+="  </tr>\n"
-                
-                # Row 3: Version
-                COVER_PAGE_CONTENT+="  <tr>\n"
-                COVER_PAGE_CONTENT+="    <td style=\"padding: 5px;\"><b>Version:</b></td>\n"
-                COVER_PAGE_CONTENT+="    <td style=\"padding: 5px;\">$VERSION</td>\n"
-                COVER_PAGE_CONTENT+="  </tr>\n"
-                COVER_PAGE_CONTENT+="</table>\n"
-                
-                # Add sufficient blank lines to push the TOC to the next "page"
-                for i in $(seq 1 20); do COVER_PAGE_CONTENT+="\n"; done
-                
-                # Combine the Cover Page and the AI-generated Content
-                FULL_DOCUMENTATION="${COVER_PAGE_CONTENT}${GENERATED_TEXT}"
-                
-                # FIX: Use printf instead of echo -e for reliable writing of content with newlines
-                printf "%b" "$FULL_DOCUMENTATION" > "$OUTPUT_FILE"
+                # 2. Append the AI-generated Text
+                printf "%b" "$GENERATED_TEXT" >> "$OUTPUT_FILE"
                 
                 echo "  💾 Saved documentation with cover page to $OUTPUT_FILE"
                 ALL_DOCS_GENERATED=true
