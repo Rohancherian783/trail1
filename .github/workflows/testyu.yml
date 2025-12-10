@@ -151,7 +151,7 @@ jobs:
               
               if [ "$GENERATED_TEXT" != "null" ] && [ -n "$GENERATED_TEXT" ]; then
                 echo "  ✅ Documentation generated successfully."
-                # --- START COVER PAGE GENERATION LOGIC (FIXED using Here Document) ---
+                # --- START COVER PAGE GENERATION LOGIC (FIXED using Indented Here Document) ---
                 
                 AUTHOR="Nidhi Srivastava"
                 DATE="2025-12-01"
@@ -159,10 +159,8 @@ jobs:
                 CLEAN_IFLOW_NAME=$(echo "$IFLOW_NAME" | sed 's/_/ /g')
                 PROJECT_TITLE="AI Tech Specification Project"
                 
-                # Use a Here Document to define the multi-line content clearly and reliably.
-                # The 'cat <<EOF' structure handles the newlines correctly.
-                # The final document will be assembled at the end of the loop.
-                COVER_PAGE_CONTENT=$(cat <<EOF
+                # Use <<-EOF to allow indentation of the closing EOF delimiter
+                COVER_PAGE_CONTENT=$(cat <<-EOF
 <p align="right">SAP / motiveminds</p>
 
 
@@ -183,8 +181,8 @@ jobs:
 | Date | $DATE |
 | Version | $VERSION |
 
-# Adding generous vertical space before the Table of Contents
 
+# Adding generous vertical space before the Table of Contents
 EOF
 )
                 
