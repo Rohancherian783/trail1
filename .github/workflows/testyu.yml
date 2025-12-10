@@ -13,7 +13,7 @@ jobs:
       contents: write # Needed to commit the generated documentation
     steps:
       - name: Checkout repository
-        uses: actions:checkout@v4
+        uses: actions/checkout@v4 # ⬅️ FIXED: Changed colon (:) to slash (/)
       - name: Install Dependencies (jq only)
         run: |
           sudo apt-get update
