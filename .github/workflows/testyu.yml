@@ -1,4 +1,28 @@
-- name: testDocumentation via OpenAI API
+name: 🤖 test Documentation
+on:
+  workflow_dispatch:
+    inputs:
+      package_id:
+        description: "The ID of the CPI Integration Package (e.g., 'PDFcoveter')."
+        required: true
+        type: string
+
+jobs:
+  document:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # Needed to commit the generated documentation
+      
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Dependencies (jq only)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
+
+      - name: Generate Individual iFlow Documentation via OpenAI API
         id: documentation_step
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
