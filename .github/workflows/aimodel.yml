@@ -42,20 +42,30 @@ jobs:
             exit 1
           fi
           
-          # --- Prompt Definitions: STRICT 10-Point Structure (Updated) ---
-          SYSTEM_PROMPT="You are a senior SAP CPI Technical Architect. Your task is to analyze ALL provided code and configuration files from the SINGLE iFlow provided and synthesize them into ONE consolidated Markdown documentation report. You MUST adhere strictly to the following 10-point structure. Consolidate Groovy, XSLT, and iFlow logic into the relevant sections (5, 6, and 7).
-          
-          The 10 mandatory sections, using Markdown headings, are:
-          1. High-level architecture
-          2. Purpose of this iFlow
-          3. Sender/Receiver systems
-          4. Adapter types used
-          5. Step-by-step flow explanation
-          6. Mapping logic summary (Summarize XSLT, Mappings)
-          7. Groovy script explanations (Summarize all scripts and their usage/purpose)
-          8. Error handling
-          9. Security/authentication (Provide detailed explanation of mechanisms, credentials, and configuration)
-          10. High-Level Process Flow Diagram (Output this using only Mermaid syntax within a \`\`\`mermaid code block. The diagram must be a 'graph TD' (Top-Down) flowchart that focuses on the end-to-end integration, showing the major systems involved (e.g., Sender System, CPI, Receiver System) and their interaction points, NOT the low-level iFlow steps like 'Content Modifier' or 'Splitter'. **CRITICAL: The first line inside the \`\`\`mermaid block MUST be 'graph TD', the second line MUST be the first node definition (NO BLANK LINES), and there must be one blank line immediately following the closing \`\`\` of the Mermaid block.**)"
+          # --- Prompt Definitions: STRICT HIERARCHICAL STRUCTURE (Updated) ---
+          SYSTEM_PROMPT="You are a senior SAP CPI Technical Architect. Your task is to analyze ALL provided code and configuration files from the SINGLE iFlow provided and synthesize them into ONE consolidated Markdown documentation report. You MUST adhere strictly to the following hierarchical 6-point structure, using Markdown headings (# for main sections, ## for subsections). Ensure all technical details (like Groovy, XSLT, Adapters, Security) are thoroughly explained within the relevant sections.
+
+          The mandatory sections and their required content mapping are:
+
+          # 1. Introduction
+          ## 1.1 Purpose (Map: Purpose of this iFlow)
+          ## 1.2 Scope (Describe the boundaries and systems affected by this single iFlow)
+
+          # 2. Integration Overview
+          ## 2.1 Integration Architecture (Map: High-level architecture + Process Diagram)
+          (Output the High-Level Process Flow Diagram immediately after the architecture text using only Mermaid syntax within a \`\`\`mermaid code block. The diagram must be a 'graph TD' (Top-Down) flowchart showing the major systems and their high-level interaction points, NOT the low-level iFlow steps. **CRITICAL: Ensure there is one blank line immediately following the closing \`\`\` of the Mermaid block.**)
+          ## 2.2 Integration Components (Map: Sender/Receiver systems + Adapter types used)
+
+          # 3. Integration Scenarios
+          ## 3.1 Scenario Description (Map: Step-by-step flow explanation detailing the iFlow path)
+          ## 3.2 Data Flows (Map: Mapping logic summary (XSLT/Mappings) + Groovy script explanations (usage/purpose))
+          ## 3.3 Security Requirements (Map: Security/authentication details on mechanisms, credentials, and configuration)
+
+          # 4. Error Handling and Logging (Map: Error handling details)
+
+          # 5. Testing Validation (Summarize key testing requirements/scenarios based on iFlow logic)
+
+          # 6. Reference Documents (List the input artifacts analyzed: iFlowContent.xml, Groovy scripts, XSLT files, etc.)"
           
           # --- Main Logic: Find and Process Each iFlow Folder ---
           
@@ -107,7 +117,7 @@ jobs:
             
             echo "  Total size of consolidated input: ${#FULL_ARTIFACT_CONTENT} characters."
             
-            USER_QUERY="Synthesize a single, consolidated technical report following the 10 mandatory sections from the set of artifacts provided below, which belong ONLY to the iFlow '$IFLOW_NAME'. \n\n\`\`\`text\n$FULL_ARTIFACT_CONTENT\n\`\`\`"
+            USER_QUERY="Synthesize a single, consolidated technical report following the 6 mandatory hierarchical sections and all sub-sections from the set of artifacts provided below, which belong ONLY to the iFlow '$IFLOW_NAME'. \n\n\`\`\`text\n$FULL_ARTIFACT_CONTENT\n\`\`\`"
             
             # 2. API Call Logic
             # Re-creating the PAYLOAD for each iFlow loop (important for scope separation)
