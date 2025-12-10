@@ -1,36 +1,57 @@
-name: 🤖 test Documentation
+name: 🤖 Generate Individual iFlow Documentation
 
 on:
   workflow_dispatch:
     inputs:
       package_id:
-        description: "The ID of the CPI Integration Package (e.g., 'PDFconverter')."
+        description: "The ID of the CPI Integration Package (e.g., 'PDFcoveter')."
         required: true
         type: string
 
 jobs:
   document:
     runs-on: ubuntu-latest
-
+    
     steps:
+
+      # --------------------------
+      # CHECKOUT REPO
+      # --------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install Dependencies (jq)
+      # --------------------------
+      # INSTALL jq
+      # --------------------------
+      - name: Install Dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y jq
 
-      - name: Generate iFlow Documentation + Architecture Diagram
+      # --------------------------
+      # GET TODAY’S DATE (Dynamic)
+      # --------------------------
+      - name: Get Today Date
+        id: date_step
+        run: echo "today=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+
+      # --------------------------
+      # GENERATE DOCUMENTATION
+      # --------------------------
+      - name: Generate Individual iFlow Documentation via OpenAI API
         id: documentation_step
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           PKG_ID: ${{ github.event.inputs.package_id }}
+
+          # 🔥 Dynamic Metadata
+          AUTHOR: "Rohan Cherian"
+          DATE: ${{ steps.date_step.outputs.today }}
+          VERSION: "Draft"
+
         run: |
-          API_URL_CHAT="https://api.openai.com/v1/chat/completions"
-          API_URL_IMAGE="https://api.openai.com/v1/images/generations"
+          API_URL="https://api.openai.com/v1/chat/completions"
           MODEL_NAME="gpt-4o-mini"
-          IMAGE_MODEL="gpt-image-1"
 
           BASE_PKG_DIR="cpi-artifacts/$PKG_ID"
 
@@ -40,152 +61,156 @@ jobs:
             exit 1
           fi
 
-          SYSTEM_PROMPT="You are a senior SAP CPI Technical Architect. Generate documentation with the following 10 mandatory sections:
-          1. High-level architecture
-          2. Purpose of this iFlow
-          3. Sender/Receiver systems
-          4. Adapter types used
-          5. Step-by-step flow explanation
-          6. Mapping logic summary
-          7. Groovy script explanations
-          8. Error handling
-          9. Security/authentication
-          10. High-Level Architecture Diagram (architecture.png will appear under this section)
+          SYSTEM_PROMPT="You are a senior SAP CPI Technical Architect. 
+          You must generate a SINGLE Markdown file with:
+          
+          ============================
+          1️⃣ MANDATORY COVER PAGE  
+          ============================
+
+          Insert EXACTLY this HTML cover page at the top of the document.
+          Replace {{AUTHOR}}, {{DATE}}, {{VERSION}}, and {{IFLOW_NAME}} dynamically.
+
+          <!-- COVER PAGE START -->
+
+          <table style='width:100%; border-collapse:collapse;'>
+            <tr>
+              <td style='text-align:left; border:none;'>
+                <img src='https://upload.wikimedia.org/wikipedia/commons/5/59/SAP_2011_logo.svg' width='120' />
+              </td>
+              <td style='text-align:right; font-size:1.1em; color:#333; border:none;'>
+                © MotiveMinds
+              </td>
+            </tr>
+          </table>
+
+          <div style='text-align:center; margin-top:120px; margin-bottom:120px;'>
+            <h1 style='color:#1f4e79; font-size:2.8em;'>
+              {{IFLOW_NAME}} – Technical Specification
+            </h1>
+          </div>
+
+          <table style='margin-left:auto; margin-right:auto; width:40%; border:1px solid #000; border-collapse:collapse; font-size:1.1em;'>
+            <tr>
+              <td style='border:1px solid #000; padding:6px; font-weight:bold;'>Author:</td>
+              <td style='border:1px solid #000; padding:6px;'>{{AUTHOR}}</td>
+            </tr>
+            <tr>
+              <td style='border:1px solid #000; padding:6px; font-weight:bold;'>Date:</td>
+              <td style='border:1px solid #000; padding:6px;'>{{DATE}}</td>
+            </tr>
+            <tr>
+              <td style='border:1px solid #000; padding:6px; font-weight:bold;'>Version:</td>
+              <td style='border:1px solid #000; padding:6px;'>{{VERSION}}</td>
+            </tr>
+          </table>
+
+          <div style='page-break-after: always;'></div>
+
+          <!-- COVER PAGE END -->
+
+
+          ============================
+          2️⃣ TABLE OF CONTENTS  
+          ============================
+          Use HTML heading for the TOC title:
+          <h1 style='color:#1f4e79; font-size: 2.5em;'>Table of Contents</h1>
+
+          Include all 6 main sections and subsections using Markdown numbers.
+
+
+          ============================
+          3️⃣ SECTIONS 1–6  
+          ============================
+          Follow the strict structure:
+
+          1. Introduction  
+            1.1 Purpose  
+            1.2 Scope  
+          2. Integration Overview  
+            2.1 Integration Architecture  
+            (⚠ include Mermaid 'graph TD' diagram)  
+            2.2 Integration Components  
+          3. Integration Scenarios  
+            3.1 Scenario Description  
+            3.2 Data Flows  
+            3.3 Security Requirements  
+          4. Error Handling and Logging  
+          5. Testing & Validation  
+          6. Reference Documents  
           "
 
+          # Find iFlow files
           FULL_IFLOW_PATHS=$(find "$BASE_PKG_DIR" -type f \( -name 'iFlowContent.xml' -o -name '*.iflw' \))
+
           IFLOW_ROOT_NAMES=$(echo "$FULL_IFLOW_PATHS" | sed "s|^$BASE_PKG_DIR/||" | cut -d/ -f1 | sort -u)
+          IFLOW_FOLDERS=$(echo "$IFLOW_ROOT_NAMES" | xargs -I {} echo "$BASE_PKG_DIR/{}")
 
           ALL_DOCS_GENERATED=false
 
-          for IFLOW_NAME in $IFLOW_ROOT_NAMES; do
-            IFLOW_DIR="$BASE_PKG_DIR/$IFLOW_NAME"
-            echo "=================================================="
-            echo "➡ Processing iFlow: $IFLOW_NAME"
+          for IFLOW_DIR in $IFLOW_FOLDERS; do
+            IFLOW_NAME=$(basename "$IFLOW_DIR")
+            OUTPUT_FILE="$IFLOW_DIR/${IFLOW_NAME}_Summary.md"
 
-            OUTPUT_DOC="$IFLOW_DIR/iFlow_Summary.md"
-            OUTPUT_IMG="$IFLOW_DIR/architecture.png"
+            echo "➡ Processing $IFLOW_NAME ..."
 
-            FULL_ARTIFACT_CONTENT=""
             FILES=$(find "$IFLOW_DIR" -type f \( -name 'iFlowContent.xml' -o -name '*.groovy' -o -name '*.xslt' -o -name '*.iflw' \))
 
-            for FILE in $FILES; do
-              FULL_ARTIFACT_CONTENT+="\n--- START $FILE ---\n$(cat "$FILE")\n--- END $FILE ---\n"
+            FULL_CONTENT=""
+            for f in $FILES; do
+              FULL_CONTENT+="\n\n--- START ARTIFACT: $f ---\n$(cat $f)\n--- END ARTIFACT: $f ---\n"
             done
 
-            USER_QUERY="Generate full documentation using the required 10-point structure.
+            USER_QUERY="Author=${AUTHOR}
+Date=${DATE}
+Version=${VERSION}
+IFLOW_NAME=${IFLOW_NAME}
 
-            \`\`\`text
-            $FULL_ARTIFACT_CONTENT
-            \`\`\`"
+Generate the complete document with the mandatory cover page, TOC, and sections.
+
+Artifacts:
+\`\`\`text
+$FULL_CONTENT
+\`\`\`
+"
 
             PAYLOAD=$(jq -n \
-              --arg sys "$SYSTEM_PROMPT" \
-              --arg usr "$USER_QUERY" \
+              --arg system "$SYSTEM_PROMPT" \
+              --arg query "$USER_QUERY" \
               --arg model "$MODEL_NAME" \
-              '{
-                model: $model,
-                temperature: 0.1,
-                messages: [
-                  { "role": "system", "content": $sys },
-                  { "role": "user", "content": $usr }
-                ]
-              }')
+              '{model:$model, messages:[{role:"system",content:$system}, {role:"user",content:$query}], temperature:0.1}')
 
-            # === TEXT GENERATION ===
-            RETRIES=3 ; COUNT=0 ; SUCCESS=false
-
-            while [ $COUNT -lt $RETRIES ]; do
-              RESPONSE=$(curl -s -X POST "$API_URL_CHAT" \
-                -H "Authorization: Bearer $OPENAI_API_KEY" \
-                -H "Content-Type: application/json" \
-                -d "$PAYLOAD")
-
-              DOC=$(echo "$RESPONSE" | jq -r ".choices[0].message.content")
-
-              if [ "$DOC" != "null" ] && [ -n "$DOC" ]; then
-                echo "  ✅ Documentation generated."
-                echo "$DOC" > "$OUTPUT_DOC"
-                SUCCESS=true
-                break
-              fi
-
-              COUNT=$((COUNT+1))
-              echo "Retrying text generation ($COUNT/$RETRIES)..."
-              sleep $((2**COUNT))
-            done
-
-            if [ "$SUCCESS" = false ]; then
-              echo "❌ Failed to generate text documentation for $IFLOW_NAME"
-              continue
-            fi
-
-            # === IMAGE GENERATION using SAFE JQ JSON BUILD ===
-            IMAGE_PROMPT="Generate a clean, professional SAP-style High-Level Integration Architecture Diagram for iFlow '$IFLOW_NAME'.
-            Include: Sender → SAP BTP (API Mgmt + Cloud Integration) → Receiver.
-            Use SAP Blue theme, numbered arrows, enterprise architecture layout.
-            Output: PNG."
-
-            echo "Generating architecture image safely..."
-
-            IMAGE_PAYLOAD=$(jq -n \
-              --arg model "$IMAGE_MODEL" \
-              --arg prompt "$IMAGE_PROMPT" \
-              --arg size "1024x1024" \
-              '{
-                model: $model,
-                prompt: $prompt,
-                size: $size
-              }')
-
-            IMAGE_RESPONSE=$(curl -s -X POST "$API_URL_IMAGE" \
-              -H "Authorization: Bearer '"$OPENAI_API_KEY"'" \
+            API_RESPONSE=$(curl -s -X POST "$API_URL" \
               -H "Content-Type: application/json" \
-              -d "$IMAGE_PAYLOAD")
+              -H "Authorization: Bearer $OPENAI_API_KEY" \
+              -d "$PAYLOAD")
 
-            # Save raw API response for debugging
-            echo "$IMAGE_RESPONSE" > "$IFLOW_DIR/image_api_raw_response.json"
+            OUTPUT=$(echo "$API_RESPONSE" | jq -r ".choices[0].message.content")
 
-            IMG_DATA=$(echo "$IMAGE_RESPONSE" | jq -r ".data[0].b64_json")
-
-            if [ "$IMG_DATA" = "null" ] || [ -z "$IMG_DATA" ]; then
-              echo "❌ Image generation failed. See image_api_raw_response.json"
-            else
-              echo "$IMG_DATA" | base64 -d > "$OUTPUT_IMG"
-              echo "  🖼️ Image saved: $OUTPUT_IMG"
-
-              # Insert inside documentation only under section 10
-              sed -i "/^10\./a ![Architecture](architecture.png)\n" "$OUTPUT_DOC"
-            fi
-
+            echo "$OUTPUT" > "$OUTPUT_FILE"
             ALL_DOCS_GENERATED=true
-            echo "=================================================="
           done
 
           echo "docs_generated=$ALL_DOCS_GENERATED" >> $GITHUB_OUTPUT
 
-      - name: Commit Documentation + Images
+      # --------------------------
+      # COMMIT DOCUMENTS
+      # --------------------------
+      - name: Commit Documentation
         if: steps.documentation_step.outputs.docs_generated == 'true'
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
 
           PKG_ID="${{ github.event.inputs.package_id }}"
-
-          # Add ONLY existing files (prevents fatal errors)
-          DOC_FILES=$(git ls-files -o -- cpi-artifacts/$PKG_ID/**/iFlow_Summary.md)
-          if [ -n "$DOC_FILES" ]; then git add $DOC_FILES; fi
-
-          IMG_FILES=$(git ls-files -o -- cpi-artifacts/$PKG_ID/**/architecture.png)
-          if [ -n "$IMG_FILES" ]; then git add $IMG_FILES; fi
-
-          RAW_FILES=$(git ls-files -o -- cpi-artifacts/$PKG_ID/**/image_api_raw_response.json)
-          if [ -n "$RAW_FILES" ]; then git add $RAW_FILES; fi
+          git add "cpi-artifacts/$PKG_ID/**/*_Summary.md"
 
           if git diff --cached --quiet; then
             echo "No changes to commit."
           else
-            git commit -m "🤖 Updated CPI iFlow Documentation + Architecture Diagram for package: $PKG_ID"
+            git commit -m "🤖 Auto-generated iFlow Documentation for package: $PKG_ID"
             git push
+            echo "Documentation committed."
           fi
+
 
