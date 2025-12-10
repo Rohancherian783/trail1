@@ -40,12 +40,11 @@ jobs:
             exit 1
           fi
 
-          SYSTEM_PROMPT="You are a senior SAP CPI Technical Architect. Your task is to analyze ALL provided code and configuration files from the SINGLE iFlow provided and synthesize them into ONE consolidated Markdown documentation report..."
+          SYSTEM_PROMPT="You are a senior SAP CPI Technical Architect..."
 
           FULL_IFLOW_PATHS=$(find "$BASE_PKG_DIR" -type f \( -name 'iFlowContent.xml' -o -name '*.iflw' \))
 
           if [ -z "$FULL_IFLOW_PATHS" ]; then
-            echo "::warning::No iFlows found."
             echo "docs_generated=false" >> $GITHUB_OUTPUT
             exit 0
           fi
@@ -59,17 +58,16 @@ jobs:
 
             IFLOW_NAME=$(basename "$IFLOW_DIR")
             OUTPUT_FILE="$IFLOW_DIR/${IFLOW_NAME}_Summary.md"
-
-            echo "Processing iFlow: $IFLOW_NAME"
+            CLEAN_IFLOW_NAME=$(echo "$IFLOW_NAME" | sed 's/_/ /g')
 
             FULL_ARTIFACT_CONTENT=""
-            FILES_TO_ANALYZE=$(find "$IFLOW_DIR" -type f \( -name 'iFlowContent.xml' -o -name '*.groovy' -o -name '*.xslt' -o -name '*.iflw' \))
+            FILES_TO_ANALYZE=$(find "$IFLOW_DIR" -type f -name '*.xml' -o -name '*.groovy' -o -name '*.iflw')
 
             for INPUT_FILE in $FILES_TO_ANALYZE; do
-              FULL_ARTIFACT_CONTENT+="\n\n--- START ARTIFACT: $INPUT_FILE ---\n$(cat "$INPUT_FILE")\n--- END ARTIFACT: $INPUT_FILE ---\n"
+              FULL_ARTIFACT_CONTENT+="\n--- START ARTIFACT: $INPUT_FILE ---\n$(cat "$INPUT_FILE")\n--- END ARTIFACT: $INPUT_FILE ---\n"
             done
 
-            USER_QUERY="Synthesize documentation for '$IFLOW_NAME'.\n\n\`\`\`text\n$FULL_ARTIFACT_CONTENT\n\`\`\`"
+            USER_QUERY="Generate documentation for '$IFLOW_NAME'.\n\`\`\`\n$FULL_ARTIFACT_CONTENT\n\`\`\`"
 
             PAYLOAD=$(jq -n \
               --arg system "$SYSTEM_PROMPT" \
@@ -78,50 +76,39 @@ jobs:
               '{
                 model: $model,
                 messages: [
-                  {role: "system", content: $system},
-                  {role: "user", content: $query}
+                  {role:"system", content:$system},
+                  {role:"user", content:$query}
                 ],
-                temperature: 0.1
+                temperature:0.1
               }')
 
-            MAX_RETRIES=3
-            RETRY_COUNT=0
-
-            while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-
-              API_RESPONSE=$(curl -s -X POST "$API_URL" \
+            API_RESPONSE=$(curl -s -X POST "$API_URL" \
                 -H "Content-Type: application/json" \
                 -H "Authorization: Bearer $OPENAI_API_KEY" \
                 -d "$PAYLOAD")
 
-              GENERATED_TEXT=$(echo "$API_RESPONSE" | jq -r ".choices[0].message.content")
+            GENERATED_TEXT=$(echo "$API_RESPONSE" | jq -r ".choices[0].message.content")
 
-              if [ "$GENERATED_TEXT" != "null" ] && [ -n "$GENERATED_TEXT" ]; then
+            if [ "$GENERATED_TEXT" != "null" ] && [ -n "$GENERATED_TEXT" ]; then
 
-                echo "✔ Documentation generated"
+              AUTHOR="Nidhi Srivastava"
+              DATE="2025-12-01"
+              VERSION="Draft"
+              PROJECT_TITLE="AI Tech Specification Project"
 
-                # ---------------------------
-                # CLEAN COVER PAGE (FINAL)
-                # ---------------------------
-                AUTHOR="Nidhi Srivastava"
-                DATE="2025-12-01"
-                VERSION="Draft"
-
-                CLEAN_IFLOW_NAME=$(echo "$IFLOW_NAME" | sed 's/_/ /g')
-                PROJECT_TITLE="AI Tech Specification Project"
-
-                read -r -d '' COVER_PAGE_CONTENT <<EOF
-<p align="right">SAP / motiveminds</p>
+              # BUILD COVER PAGE USING printf (YAML SAFE)
+              COVER_PAGE_CONTENT=$(printf "%s\n" "
+<p align=\"right\">SAP / motiveminds</p>
 
 <br><br><br><br>
 
-<h1 style="color:#1f4e79; font-size:3em; text-align:left;">
+<h1 style=\"color:#1f4e79; font-size:3em; text-align:left;\">
 $PROJECT_TITLE - $CLEAN_IFLOW_NAME
 </h1>
 
 <br><br>
 
-<table style="width:60%; border-collapse: collapse;" border="1">
+<table style=\"width:60%; border-collapse: collapse;\" border=\"1\">
 <tr>
   <td><strong>Author</strong></td>
   <td>$AUTHOR</td>
@@ -136,40 +123,27 @@ $PROJECT_TITLE - $CLEAN_IFLOW_NAME
 </tr>
 </table>
 
-<br><br><br><br><br><br><br><br><br>
-EOF
+<br><br><br><br><br><br><br>
+")
 
-                # Write cover page + GPT document
-                echo "$COVER_PAGE_CONTENT$GENERATED_TEXT" > "$OUTPUT_FILE"
+              echo "$COVER_PAGE_CONTENT$GENERATED_TEXT" > "$OUTPUT_FILE"
 
-                echo "💾 Saved: $OUTPUT_FILE"
-                ALL_DOCS_GENERATED=true
-                break
-              fi
-
-              RETRY_COUNT=$((RETRY_COUNT + 1))
-              sleep $((2**RETRY_COUNT))
-
-            done
+              ALL_DOCS_GENERATED=true
+            fi
 
           done
 
           echo "docs_generated=$ALL_DOCS_GENERATED" >> $GITHUB_OUTPUT
 
-      - name: Commit All Generated iFlow Documentation
+      - name: Commit All Generated Documents
         if: steps.documentation_step.outputs.docs_generated == 'true'
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
-
           PKG_ID="${{ github.event.inputs.package_id }}"
           git add "cpi-artifacts/$PKG_ID/**/*_Summary.md"
+          git commit -m "Updated documentation with cover page" || echo "No changes"
+          git push || true
 
-          if git diff --cached --quiet; then
-              echo "No changes detected."
-          else
-              git commit -m "🤖 Updated documentation for package: $PKG_ID"
-              git push
-              echo "✔ Documentation committed."
-          fi
+
 
