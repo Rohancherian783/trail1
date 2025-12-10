@@ -166,16 +166,15 @@ jobs:
               if [ "$GENERATED_TEXT" != "null" ] && [ -n "$GENERATED_TEXT" ]; then
                 echo "  ✅ Documentation generated successfully."
                 
-                # --- START COVER PAGE GENERATION LOGIC (FIXED) ---                                
+                # --- START COVER PAGE GENERATION LOGIC (FIXED: Using printf to avoid YAML/Heredoc issues) ---                                
                 # Static/Default Variables for the Cover Page
                 AUTHOR="Nidhi Srivastava"
                 DATE="2025-12-01"
                 VERSION="Draft"
                 PROJECT_TITLE="AI Tech Specification Project"
                                 
-                # FIX: Use a Heredoc (cat <<-EOF) to handle newlines correctly.
-                # The closing EOF marker MUST NOT be indented.
-                COVER_PAGE_CONTENT=$(cat <<-EOF
+                # FIX: Use 'printf' to reliably construct the multi-line content, avoiding the error-prone Heredoc syntax.
+                COVER_PAGE_CONTENT=$(printf '
 <p align="right">SAP / motiveminds</p>
 <br>
 <br>
@@ -188,13 +187,13 @@ jobs:
 <br>
 <br>
 
-<h1 style="color: #1f4e79; font-size: 3em; text-align: left; margin-top: 100px;">$PROJECT_TITLE - ${IFLOW_NAME//_/\ }</h1>
+<h1 style="color: #1f4e79; font-size: 3em; text-align: left; margin-top: 100px;">%s - %s</h1>
 
 | Key | Value |
 | :--- | :--- |
-| Author | $AUTHOR |
-| Date | $DATE |
-| Version | $VERSION |
+| Author | %s |
+| Date | %s |
+| Version | %s |
 
 
 <br>
@@ -223,12 +222,12 @@ jobs:
 <br>
 <br>
 
-EOF
-)
+' "$PROJECT_TITLE" "${IFLOW_NAME//_/\ }" "$AUTHOR" "$DATE" "$VERSION")
+
                  # Combine the Cover Page and the AI-generated Content
                  FULL_DOCUMENTATION="${COVER_PAGE_CONTENT}${GENERATED_TEXT}"
                                 
-                 # Write the content (now containing actual newlines) to the output file
+                 # Write the content to the output file
                  echo "$FULL_DOCUMENTATION" > "$OUTPUT_FILE"
                  echo "  💾 Saved documentation with cover page to $OUTPUT_FILE"
                  ALL_DOCS_GENERATED=true
@@ -274,7 +273,6 @@ EOF
               git push
               echo "✅ All iFlow documentation committed and pushed to repository."
           fi
-
 
 
 
