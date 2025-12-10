@@ -1,4 +1,4 @@
-name: 🤖 Test Documentation
+name: 🤖 Generate Individual iFlow Documentation
 
 on:
   workflow_dispatch:
@@ -33,21 +33,21 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Generate today's date here (safe, no YAML interpolation needed)
+          # compute date inside the run block (safe)
           DATE=$(date +'%Y-%m-%d')
           echo "Using dynamic metadata: AUTHOR=${AUTHOR}, DATE=${DATE}, VERSION=${VERSION}"
 
           BASE_PKG_DIR="cpi-artifacts/${PKG_ID}"
-
           if [ ! -d "${BASE_PKG_DIR}" ]; then
             echo "::error::Package directory not found: ${BASE_PKG_DIR}"
             echo "docs_generated=false" >> $GITHUB_OUTPUT
             exit 1
           fi
 
-          # Build the SYSTEM_PROMPT safely using a heredoc
-          SYSTEM_PROMPT=$(cat <<'EOF'
-You are a senior SAP CPI Technical Architect. 
+          # Write the SYSTEM_PROMPT to a temporary file using a safe, non-indented heredoc.
+          # This prevents YAML parsing issues and preserves exact content.
+          cat > /tmp/system_prompt.txt <<'SYSTEM_PROMPT'
+You are a senior SAP CPI Technical Architect.
 You must generate a SINGLE Markdown file with:
 
 1) MANDATORY COVER PAGE (use the exact HTML below)
@@ -95,12 +95,13 @@ Followed by:
 - Table of Contents (use HTML heading for TOC title: <h1 style='color:#1f4e79; font-size: 2.5em;'>Table of Contents</h1>)
 - Strict 6-section markdown structure (1..6) with subsections as described previously.
 - Include a Mermaid graph (graph TD) for the high-level Integration Architecture under section 2.1 and leave one blank line after the closing ``` of the mermaid block.
-EOF
-)
+SYSTEM_PROMPT
+
+          # Read the prompt into a shell variable (safe)
+          SYSTEM_PROMPT_CONTENT="$(cat /tmp/system_prompt.txt)"
 
           # Find iFlow root files
           FULL_IFLOW_PATHS=$(find "${BASE_PKG_DIR}" -type f \( -name 'iFlowContent.xml' -o -name '*.iflw' \) -print || true)
-
           if [ -z "${FULL_IFLOW_PATHS}" ]; then
             echo "::warning::No iFlows found (no 'iFlowContent.xml' or '*.iflw') in package '${PKG_ID}'."
             echo "docs_generated=false" >> $GITHUB_OUTPUT
@@ -115,11 +116,9 @@ EOF
           for IFLOW_DIR in ${IFLOW_FOLDERS}; do
             IFLOW_NAME=$(basename "${IFLOW_DIR}")
             OUTPUT_FILE="${IFLOW_DIR}/${IFLOW_NAME}_Summary.md"
-
             echo "➡ Processing iFlow: ${IFLOW_NAME} (folder: ${IFLOW_DIR})"
 
             FILES_TO_ANALYZE=$(find "${IFLOW_DIR}" -type f \( -name 'iFlowContent.xml' -o -name '*.groovy' -o -name '*.xslt' -o -name '*.iflw' \) -print || true)
-
             if [ -z "${FILES_TO_ANALYZE}" ]; then
               echo "  ⚠️ No supported artifacts found in ${IFLOW_DIR}. Skipping."
               continue
@@ -145,7 +144,7 @@ ${FULL_ARTIFACT_CONTENT}
 "
 
             # Build payload using jq (safe for large strings)
-            PAYLOAD=$(jq -nc --arg system "${SYSTEM_PROMPT}" --arg query "${USER_QUERY}" --arg model "${MODEL_NAME}" '{
+            PAYLOAD=$(jq -nc --arg system "${SYSTEM_PROMPT_CONTENT}" --arg query "${USER_QUERY}" --arg model "${MODEL_NAME}" '{
               model: $model,
               messages: [
                 { role: "system", content: $system },
@@ -190,6 +189,7 @@ ${FULL_ARTIFACT_CONTENT}
             git push
             echo "Documentation committed."
           fi
+
 
 
 
