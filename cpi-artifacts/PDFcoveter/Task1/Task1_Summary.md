@@ -47,7 +47,7 @@ The iFlow uses basic authentication for the email adapters. The sender and recei
 graph TD
     A[Sender System] -->|Email Retrieval| B[CPI]
     B -->|Process Email| C[Generate PDFs]
-    C -->|Merge PDFs| D[Send Email]
+    C -->|Merge Pd| D[Send Email]
     D -->|Email with Attachments| E[Receiver System]
 
 ```
