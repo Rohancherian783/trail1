@@ -45,8 +45,8 @@ jobs:
           fi
 
           # Write the SYSTEM_PROMPT to a temporary file using a safe, non-indented heredoc.
-          # This prevents YAML parsing issues and preserves exact content.
-          cat > /tmp/system_prompt.txt <<'SYSTEM_PROMPT'
+          # The content must start flush with the indentation of the first command inside 'run: |'
+          cat > /tmp/system_prompt.txt <<'SYSTEM_PROMPT_CONTENT'
 You are a senior SAP CPI Technical Architect.
 You must generate a SINGLE Markdown file with:
 
@@ -91,7 +91,7 @@ Followed by:
 - Table of Contents (use HTML heading for TOC title: <h1 style='color:#1f4e79; font-size: 2.5em;'>Table of Contents</h1>)
 - Strict 6-section markdown structure (1..6) with subsections as described previously.
 - Include a Mermaid graph (graph TD) for the high-level Integration Architecture under section 2.1 and leave one blank line after the closing ``` of the mermaid block.
-SYSTEM_PROMPT
+SYSTEM_PROMPT_CONTENT
 
           # Read the prompt into a shell variable (safe)
           SYSTEM_PROMPT_CONTENT="$(cat /tmp/system_prompt.txt)"
