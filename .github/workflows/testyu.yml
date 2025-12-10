@@ -20,13 +20,10 @@ jobs:
         run: |
           sudo apt-get update
 
-          # Install required system packages
           sudo apt-get install -y jq pandoc nodejs npm chromium-browser
 
-          # Install Mermaid CLI globally
           sudo npm install -g @mermaid-js/mermaid-cli
 
-          # Make Chromium path available to Puppeteer
           echo "PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser" >> $GITHUB_ENV
 
       - name: Generate Individual iFlow Documentation via OpenAI API
@@ -35,13 +32,12 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           PKG_ID: ${{ github.event.inputs.package_id }}
         run: |
-          # --- CONFIGURATION ---
           API_URL="https://api.openai.com/v1/chat/completions"
           MODEL_NAME="gpt-4o-mini"
           BASE_PKG_DIR="cpi-artifacts/$PKG_ID"
 
           if [ ! -d "$BASE_PKG_DIR" ]; then
-            echo "::error::Package directory not found at: $BASE_PKG_DIR"
+            echo "::error::Package directory not found: $BASE_PKG_DIR"
             echo "docs_generated=false" >> $GITHUB_OUTPUT
             exit 1
           fi
@@ -58,10 +54,11 @@ jobs:
           9. Security/authentication
           10. High-Level Process Flow Diagram (Mermaid 'graph TD')"
 
-          # Detect iFlow folders
+          # Find all iFlow folders
           FULL_IFLOW_PATHS=$(find "$BASE_PKG_DIR" -type f \( -name 'iFlowContent.xml' -o -name '*.iflw' \))
+
           if [ -z "$FULL_IFLOW_PATHS" ]; then
-            echo "::warning::No iFlows found."
+            echo "::warning::No iFlows found under $BASE_PKG_DIR."
             echo "docs_generated=false" >> $GITHUB_OUTPUT
             exit 0
           fi
@@ -71,7 +68,6 @@ jobs:
 
           ALL_DOCS_GENERATED=false
 
-          # --- PROCESS EACH IFLOW ---
           for IFLOW_DIR in $IFLOW_FOLDERS; do
             IFLOW_NAME=$(basename "$IFLOW_DIR")
             MD_FILE="$IFLOW_DIR/iFlow_Summary.md"
@@ -81,15 +77,17 @@ jobs:
             echo "=================================================="
             echo "➡ Processing iFlow: $IFLOW_NAME"
 
-            # Collect all artifacts
             FULL_ARTIFACT_CONTENT=""
-            FILES_TO_ANALYZE=$(find "$IFLOW_DIR" -type f \( -name 'iFlowContent.xml' -o -name '*.groovy' -o -name '*.xslt' -o -name '*.iflw' \))
+            ARTIFACT_FILES=$(find "$IFLOW_DIR" -type f \( -name 'iFlowContent.xml' -o -name '*.groovy' -o -name '*.xslt' -o -name '*.iflw' \))
 
-            for INPUT_FILE in $FILES_TO_ANALYZE; do
+            for INPUT_FILE in $ARTIFACT_FILES; do
               FULL_ARTIFACT_CONTENT+="\n\n--- START ARTIFACT: $INPUT_FILE ---\n$(cat "$INPUT_FILE")\n--- END ARTIFACT ---\n"
             done
 
-            USER_QUERY="Synthesize documentation:\n\`\`\`text\n$FULL_ARTIFACT_CONTENT\n\`\`\`"
+            USER_QUERY="Synthesize documentation based on artifacts:
+            \`\`\`text
+            $FULL_ARTIFACT_CONTENT
+            \`\`\`"
 
             PAYLOAD=$(jq -n \
               --arg system "$SYSTEM_PROMPT" \
@@ -104,48 +102,50 @@ jobs:
                 temperature: 0.1
               }')
 
-            # --- API RETRY LOGIC ---
+            # Retry logic
             MAX_RETRIES=3
-            RETRY_COUNT=0
+            RETRY=0
 
-            while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-              API_RESPONSE=$(curl -s -X POST "$API_URL" \
+            while [ $RETRY -lt $MAX_RETRIES ]; do
+              RESPONSE=$(curl -s -X POST "$API_URL" \
                 -H "Content-Type: application/json" \
                 -H "Authorization: Bearer $OPENAI_API_KEY" \
                 -d "$PAYLOAD")
 
-              GENERATED_TEXT=$(echo "$API_RESPONSE" | jq -r ".choices[0].message.content")
+              GENERATED_TEXT=$(echo "$RESPONSE" | jq -r ".choices[0].message.content")
 
               if [ "$GENERATED_TEXT" != "null" ] && [ -n "$GENERATED_TEXT" ]; then
-                echo "  ✅ Documentation generated."
                 echo "$GENERATED_TEXT" > "$MD_FILE"
+                echo "  ✅ Documentation generated."
                 ALL_DOCS_GENERATED=true
                 break
-              else
-                RETRY_COUNT=$((RETRY_COUNT + 1))
-                sleep $((2**RETRY_COUNT))
               fi
+
+              RETRY=$((RETRY + 1))
+              sleep $((2**RETRY))
             done
 
-            # --- EXTRACT MERMAID CODE ---
-            MERMAID_CONTENT=$(sed -n '/```mermaid/,/```/p' "$MD_FILE" | sed '1d;$d')
+            # -------------------------------
+            # SAFE MERMAID EXTRACTION FIX
+            # -------------------------------
+            MERMAID_CONTENT=$(awk '/```mermaid/{flag=1;next}/```/{flag=0}flag' "$MD_FILE")
 
-            if [ -n "$MERMAID_CONTENT" ]; then
+            if [ -z "$MERMAID_CONTENT" ]; then
+              echo "⚠️ No mermaid diagram found. Skipping rendering."
+            else
               echo "$MERMAID_CONTENT" > "$IFLOW_DIR/diagram.mmd"
 
-              echo "Rendering Mermaid Diagram..."
+              echo "Rendering Mermaid diagram..."
               mmdc -i "$IFLOW_DIR/diagram.mmd" -o "$PNG_FILE" --puppeteerConfigFile /dev/null
+
+              # Replace the block with image reference
+              sed -i "/```mermaid/,/```/c ![]($PNG_FILE)" "$MD_FILE"
             fi
 
-            # Replace mermaid block with PNG reference
-            sed -i "s|```mermaid|![]($PNG_FILE)|g" "$MD_FILE"
-            sed -i "/graph TD/,+10d" "$MD_FILE"
-            sed -i "s|```||g" "$MD_FILE"
-
-            # --- CONVERT MARKDOWN → DOCX ---
+            # Convert Markdown → DOCX
             pandoc "$MD_FILE" -o "$DOCX_FILE"
+            echo "📄 DOCX created: $DOCX_FILE"
 
-            echo "📄 Generated DOCX: $DOCX_FILE"
             echo "=================================================="
           done
 
@@ -164,11 +164,12 @@ jobs:
           git add "cpi-artifacts/$PKG_ID/**/iFlow_Diagram.png"
 
           if git diff --cached --quiet; then
-            echo "No changes detected. Skip commit."
+            echo "No changes to commit."
           else
-            git commit -m "📄 DOCX + PNG Diagram: Documentation generated for package $PKG_ID"
+            git commit -m "📄 DOCX + PNG diagram generated for package $PKG_ID"
             git push
           fi
+
 
 
 
