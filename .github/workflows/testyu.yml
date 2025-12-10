@@ -1,4 +1,4 @@
-name: 🤖 Generate Individual iFlow Documentation
+name: 🤖 CPI Documentation
 
 on:
   workflow_dispatch:
@@ -53,8 +53,6 @@ You must generate a SINGLE Markdown file with:
 1) MANDATORY COVER PAGE (use the exact HTML below)
 Replace {{AUTHOR}}, {{DATE}}, {{VERSION}}, and {{IFLOW_NAME}} with provided dynamic values.
 
-<!-- COVER PAGE START -->
-
 <table style='width:100%; border-collapse:collapse;'>
   <tr>
     <td style='text-align:left; border:none;'>
@@ -88,8 +86,6 @@ Replace {{AUTHOR}}, {{DATE}}, {{VERSION}}, and {{IFLOW_NAME}} with provided dyna
 </table>
 
 <div style='page-break-after: always;'></div>
-
-<!-- COVER PAGE END -->
 
 Followed by:
 - Table of Contents (use HTML heading for TOC title: <h1 style='color:#1f4e79; font-size: 2.5em;'>Table of Contents</h1>)
