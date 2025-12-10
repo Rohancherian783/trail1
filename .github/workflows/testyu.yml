@@ -1,29 +1,4 @@
-name: 🤖 test Documentation
-
-on:
-  workflow_dispatch:
-    inputs:
-      package_id:
-        description: "The ID of the CPI Integration Package (e.g., 'PDFcoveter')."
-        required: true
-        type: string
-
-jobs:
-  document:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write # Needed to commit the generated documentation
-      
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Install Dependencies (jq only)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y jq
-
-      - name: Generate Individual iFlow Documentation via OpenAI API
+- name: testDocumentation via OpenAI API
         id: documentation_step
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -160,6 +135,7 @@ jobs:
                 PROJECT_TITLE="AI Tech Specification Project"
                 
                 # Use <<-EOF to allow indentation of the closing EOF delimiter
+                # NOTE: The closing EOF MUST be indented exactly the same amount as the 'COVER_PAGE_CONTENT=$(cat <<-EOF' line.
                 COVER_PAGE_CONTENT=$(cat <<-EOF
 <p align="right">SAP / motiveminds</p>
 
