@@ -1,10 +1,10 @@
-name: 🤖 Generate Individual iFlow Documentation
+name: 🤖 test Documentation
 
 on:
   workflow_dispatch:
     inputs:
       package_id:
-        description: "The ID of the CPI Integration Package (e.g., 'PDFcoveter')."
+        description: "The ID of the CPI Integration Package (e.g., 'PDFconverter')."
         required: true
         type: string
 
@@ -124,8 +124,8 @@ jobs:
             - Sender system(s)
             - SAP BTP (API Management + Cloud Integration)
             - Receiver system(s)
-            - Arrows with numbers (1,2,3) showing message path
-            Style: SAP Blue, clean, enterprise architecture look.
+            - Arrows with numbers showing message flow
+            Style: SAP Blue theme, clean, minimal, enterprise architecture.
             Output: PNG."
 
             echo "Generating architecture image..."
@@ -150,7 +150,7 @@ jobs:
                 echo "$IMG_DATA" | base64 -d > "$OUTPUT_IMG"
                 echo "  🖼️ Image saved: $OUTPUT_IMG"
 
-                # Insert ONLY under point 10
+                # Insert image INSIDE documentation under point 10
                 sed -i "/^10\./a ![Architecture](architecture.png)\n" "$OUTPUT_DOC"
             fi
 
@@ -167,9 +167,16 @@ jobs:
           git config user.email "actions@github.com"
 
           PKG_ID="${{ github.event.inputs.package_id }}"
-          git add "cpi-artifacts/$PKG_ID/**/iFlow_Summary.md"
-          git add "cpi-artifacts/$PKG_ID/**/architecture.png"
-          git add "cpi-artifacts/$PKG_ID/**/image_api_raw_response.json"
+
+          # Stage only files that exist
+          DOC_FILES=$(git ls-files -o -- cpi-artifacts/$PKG_ID/**/iFlow_Summary.md)
+          if [ -n "$DOC_FILES" ]; then git add $DOC_FILES; fi
+
+          IMG_FILES=$(git ls-files -o -- cpi-artifacts/$PKG_ID/**/architecture.png)
+          if [ -n "$IMG_FILES" ]; then git add $IMG_FILES; fi
+
+          RAW_FILES=$(git ls-files -o -- cpi-artifacts/$PKG_ID/**/image_api_raw_response.json)
+          if [ -n "$RAW_FILES" ]; then git add $RAW_FILES; fi
 
           if git diff --cached --quiet; then
             echo "No changes to commit."
@@ -177,9 +184,3 @@ jobs:
             git commit -m "🤖 Updated iFlow Documentation + Architecture Diagrams for package: $PKG_ID"
             git push
           fi
-
-
-
-
-
-
