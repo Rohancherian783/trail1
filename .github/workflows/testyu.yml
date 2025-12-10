@@ -157,10 +157,18 @@ jobs:
                 CLEAN_IFLOW_NAME=$(echo "$IFLOW_NAME" | sed 's/_/ /g')
                 PROJECT_TITLE="AI Tech Specification Project - Odata Mass PDF upload"
                                 
-                # Cover Page Content using Markdown and HTML for styling
-                                
-                # 1. Top Right Aligned Text - Using CSS float for better header/logo alignment
-                COVER_PAGE_CONTENT="<div style=\"float: right; font-size: 0.9em; color: #555;\">SAP | motiveminds</div>\n\n\n\n\n\n\n"
+                # --- LOGO SETUP ---
+                # 💡 URLs updated to use the Raw Content link for the confirmed files/paths.
+                SAP_LOGO_URL="https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/sap_logo.png"
+                MOTIVEMINDS_LOGO_URL="https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/motiveminds_logo.png"
+                # --- END LOGO SETUP ---
+
+                # 1. Top Right Aligned Logos - Using HTML <img> tags
+                COVER_PAGE_CONTENT="<div style=\"float: right; text-align: right;\">"
+                COVER_PAGE_CONTENT+="<img src=\"$SAP_LOGO_URL\" alt=\"SAP Logo\" width=\"50\" height=\"30\"/>"
+                COVER_PAGE_CONTENT+="&nbsp;&nbsp;"
+                COVER_PAGE_CONTENT+="<img src=\"$MOTIVEMINDS_LOGO_URL\" alt=\"motiveminds Logo\" width=\"80\" height=\"30\"/>"
+                COVER_PAGE_CONTENT+="</div>\n\n\n\n\n\n\n\n\n\n\n"
                                 
                 # 2. Project Title and iFlow Name, styled to match the image
                 FULL_TITLE="$PROJECT_TITLE - $CLEAN_IFLOW_NAME"
