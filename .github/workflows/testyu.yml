@@ -129,10 +129,6 @@ jobs:
                 COVER_PAGE_CONTENT+="<tr><td style=\"padding: 5px;\">**Date:**</td><td style=\"padding: 5px;\">$DATE</td></tr>"
                 COVER_PAGE_CONTENT+="<tr><td style=\"padding: 5px;\">**Version (Commit):**</td><td style=\"padding: 5px;\">$VERSION</td></tr></table></div>"
                 
-                # IMPORTANT: Remove the page break after the cover page! 
-                # This ensures the TOC appears on the same HTML page, which is best practice for HTML reports.
-                # COVER_PAGE_CONTENT+="\n<div style=\"page-break-after: always;\"></div>\n\n" 
-                
                 # Replace the cover page page break with just some vertical space for HTML viewing
                 COVER_PAGE_CONTENT+="\n<div style=\"margin-bottom: 50px;\"></div>\n\n"
                                       
@@ -160,7 +156,6 @@ jobs:
 
 
       # --- Step 2: Pre-Process Mermaid Code Blocks to SVG Images (UNCHANGED) ---
-      # This step is still needed to convert Mermaid to images before the final Pandoc step.
       - name: 🖼️ Convert Mermaid Code Blocks to SVG Images
         if: steps.documentation_step.outputs.docs_generated == 'true'
         id: mermaid_convert
@@ -261,10 +256,10 @@ jobs:
           echo "::set-output name=combined_md_path::$OUTPUT_MD"
 
 
-      # --- Step 4: Final Conversion (NEW: MD to Self-Contained HTML) ---
-      # This step replaces the two LaTeX-related steps (4A and 4B)
+      # --- Step 4: Final Conversion (MD to Self-Contained HTML) ---
       - name: 📄 Convert Combined Markdown to Self-Contained HTML
         if: steps.consolidate_md.outputs.combined_md_path != ''
+        id: html_convert # <-- VALID ID ADDED HERE
         env:
           PKG_ID: ${{ github.event.inputs.package_id }}
           INPUT_MD: ${{ steps.consolidate_md.outputs.combined_md_path }}
@@ -275,10 +270,6 @@ jobs:
           OUTPUT_HTML_PATH="${{ env.OUTPUT_HTML }}"
           
           echo "::notice::Starting single-step Markdown-to-HTML conversion."
-          
-          # We use a simpler Pandoc Docker image since we don't need LaTeX dependencies
-          # Using 'pandoc/core' is safer, but we can stick to 'pandoc/latex' since it's already pulled.
-          # --self-contained embeds all CSS, images (if local), and resources, making it one portable file.
           
           /usr/bin/docker run --rm \
               -v "$(pwd):/data" \
@@ -297,8 +288,8 @@ jobs:
           fi
 
           echo "::notice::Final HTML generated successfully at $OUTPUT_HTML_PATH"
-          echo "::set-output name=html_generated::true" # Set output flag for commit step
-
+          echo "html_generated=true" >> $GITHUB_OUTPUT # Correctly setting output
+          
 
       # --- Step 5: COMMIT STEP (UPDATED: Referencing the HTML file) ---
       - name: 💾 Commit All Generated Files (MD, SVG, and HTML)
@@ -309,7 +300,8 @@ jobs:
                       
           PKG_ID="${{ github.event.inputs.package_id }}"
           
-          HTML_GENERATED_FLAG="${{ steps.4_final_conversion.outputs.html_generated }}"
+          # FIX: Reference the new, valid ID 'html_convert'
+          HTML_GENERATED_FLAG="${{ steps.html_convert.outputs.html_generated }}"
           
           # Define all possible paths
           OUTPUT_PATH_MD="cpi-artifacts/$PKG_ID/**/*_Summary.md"
