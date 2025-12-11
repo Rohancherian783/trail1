@@ -16,7 +16,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install Dependencies (jq and Docker for PDF tool)
+      - name: Install Dependencies (jq and Docker preparation)
         run: |
           # jq is needed for JSON manipulation with the OpenAI API
           sudo apt-get update
@@ -223,7 +223,7 @@ jobs:
           echo "docs_generated=$ALL_DOCS_GENERATED" >> $GITHUB_OUTPUT
 
 
-      # --- START CORRECTED STEP FOR PDF GENERATION WITH REPEATING HEADER ---
+      # --- START CORRECTED STEP FOR PDF GENERATION WITH REPEATING HEADER (Attempt 3) ---
 
       - name: Generate PDF with Repeating Header
         if: steps.documentation_step.outputs.docs_generated == 'true'
@@ -243,9 +243,9 @@ jobs:
           REPEATING_HEADER+="<img src='${{ env.MOTIVEMINDS_LOGO_URL }}' alt='motiveminds Logo' style='height: 25px;'/>"
           REPEATING_HEADER+="</div>"
           
-          # 1. Save the header HTML to a temporary file accessible to the Docker container
-          mkdir -p /tmp/pdf_config
-          echo "$REPEATING_HEADER" > /tmp/pdf_config/header.html
+          # 1. Save the header HTML to a temporary file in the current directory (for easier mapping)
+          HEADER_FILE="./header_template.html"
+          echo "$REPEATING_HEADER" > "$HEADER_FILE"
           
           # 2. Iterate through all generated Markdown files to convert them
           for IFLOW_NAME in $IFLOW_ROOT_NAMES; do
@@ -253,19 +253,15 @@ jobs:
               OUTPUT_PDF="cpi-artifacts/$PKG_ID/$IFLOW_NAME/${IFLOW_NAME}_Summary.pdf"
               
               if [ -f "$INPUT_MD" ]; then
-                  echo "::notice file=$IFLOW_NAME::Starting PDF conversion for $IFLOW_NAME using mgood/doc-to-pdf."
+                  echo "::notice file=$IFLOW_NAME::Starting PDF conversion for $IFLOW_NAME using bailey-p/markdown-to-pdf."
                   
-                  # Use the stable mgood/doc-to-pdf Docker image
-                  # -v "$(pwd):/app": Maps the current repository directory to /app inside the container
-                  # -v "/tmp/pdf_config:/pdf_config": Maps the temporary header file location
+                  # Use the stable bailey-p/markdown-to-pdf Docker image
                   /usr/bin/docker run --rm \
                       -v "$(pwd):/app" \
-                      -v "/tmp/pdf_config:/pdf_config" \
-                      mgood/doc-to-pdf \
+                      bailey-p/markdown-to-pdf \
                       --input "/app/$INPUT_MD" \
                       --output "/app/$OUTPUT_PDF" \
-                      --header-html "/pdf_config/header.html" \
-                      --pdf-display-header-footer \
+                      --header-html-path "/app/$HEADER_FILE" \
                       --page-margin "0.8in 0.5in 0.8in 0.5in" \
                       --page-format "A4" 
                       
@@ -274,8 +270,11 @@ jobs:
                   echo "::warning file=$IFLOW_NAME::Markdown file not found for PDF conversion: $INPUT_MD"
               fi
           done
+          
+          # Clean up the temporary header file
+          rm -f "$HEADER_FILE"
 
-      # --- END CORRECTED STEP FOR PDF GENERATION WITH REPEATING HEADER ---
+      # --- END CORRECTED STEP FOR PDF GENERATION WITH REPEATING HEADER (Attempt 3) ---
 
 
       - name: Commit All Generated Files (MD and PDF)
