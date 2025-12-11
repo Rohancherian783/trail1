@@ -16,13 +16,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install Dependencies (jq and Docker preparation)
+      - name: Install Dependencies (jq only)
         run: |
           # jq is needed for JSON manipulation with the OpenAI API
           sudo apt-get update
           sudo apt-get install -y jq
-          # Docker is pre-installed on GitHub runners, but this ensures dependencies are fresh.
+          # Docker is no longer explicitly needed in the shell steps.
 
+      # --- Step 1: Generate Individual iFlow Documentation (Unchanged) ---
       - name: Generate Individual iFlow Documentation via OpenAI API
         id: documentation_step
         env:
@@ -222,60 +223,58 @@ jobs:
           # Set final output status
           echo "docs_generated=$ALL_DOCS_GENERATED" >> $GITHUB_OUTPUT
 
+      # --- START NEW STEPS FOR PDF GENERATION WITH ACTION ---
 
-      # --- START CORRECTED STEP FOR PDF GENERATION WITH REPEATING HEADER (Attempt 3) ---
-
-      - name: Generate PDF with Repeating Header
+      - name: 📄 Concatenate All iFlow Documents for Single PDF Conversion
         if: steps.documentation_step.outputs.docs_generated == 'true'
+        id: concatenate
         env:
           PKG_ID: ${{ github.event.inputs.package_id }}
-          SAP_LOGO_URL: "https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/sap_logo.png"
-          MOTIVEMINDS_LOGO_URL: "https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/motiveminds_logo.png"
-          DOC_TITLE: "SAP CPI Technical Specification" # Text for the center of the header
         run: |
-          IFLOW_ROOT_NAMES=$(find "cpi-artifacts/$PKG_ID" -type f \( -name 'iFlowContent.xml' -o -name '*.iflw' \) -print | sed "s|^cpi-artifacts/$PKG_ID/||" | cut -d/ -f1 | sort -u)
+          # Find all generated Markdown files
+          INPUT_FILES=$(find "cpi-artifacts/$PKG_ID" -type f -name '*_Summary.md' | sort)
           
-          # Define the repeating header HTML structure
-          # Use 'display: flex' for easy logo and text alignment
-          REPEATING_HEADER="<div style='display: flex; justify-content: space-between; align-items: center; width: 100%; border-bottom: 1px solid #ddd; padding: 5px 0;'>"
-          REPEATING_HEADER+="<img src='${{ env.SAP_LOGO_URL }}' alt='SAP Logo' style='height: 30px;'/>"
-          REPEATING_HEADER+="<span style='font-size: 10px; color: #1f4e79; font-weight: bold;'>${{ env.DOC_TITLE }}</span>"
-          REPEATING_HEADER+="<img src='${{ env.MOTIVEMINDS_LOGO_URL }}' alt='motiveminds Logo' style='height: 25px;'/>"
-          REPEATING_HEADER+="</div>"
+          # Define the single output file for concatenation
+          OUTPUT_MD="cpi-artifacts/$PKG_ID/Combined_CPI_Documentation.md"
           
-          # 1. Save the header HTML to a temporary file in the current directory (for easier mapping)
-          HEADER_FILE="./header_template.html"
-          echo "$REPEATING_HEADER" > "$HEADER_FILE"
+          echo "Concatenating files into $OUTPUT_MD"
           
-          # 2. Iterate through all generated Markdown files to convert them
-          for IFLOW_NAME in $IFLOW_ROOT_NAMES; do
-              INPUT_MD="cpi-artifacts/$PKG_ID/$IFLOW_NAME/${IFLOW_NAME}_Summary.md"
-              OUTPUT_PDF="cpi-artifacts/$PKG_ID/$IFLOW_NAME/${IFLOW_NAME}_Summary.pdf"
+          # Initialize the combined file
+          > "$OUTPUT_MD"
+          
+          # Loop through each generated MD file and append it to the combined file
+          for FILE in $INPUT_FILES; do
+              IFLOW_NAME=$(basename "$(dirname "$FILE")")
+              echo "--- Adding iFlow: $IFLOW_NAME ---"
               
-              if [ -f "$INPUT_MD" ]; then
-                  echo "::notice file=$IFLOW_NAME::Starting PDF conversion for $IFLOW_NAME using bailey-p/markdown-to-pdf."
-                  
-                  # Use the stable bailey-p/markdown-to-pdf Docker image
-                  /usr/bin/docker run --rm \
-                      -v "$(pwd):/app" \
-                      bailey-p/markdown-to-pdf \
-                      --input "/app/$INPUT_MD" \
-                      --output "/app/$OUTPUT_PDF" \
-                      --header-html-path "/app/$HEADER_FILE" \
-                      --page-margin "0.8in 0.5in 0.8in 0.5in" \
-                      --page-format "A4" 
-                      
-                  echo "::notice file=$IFLOW_NAME::PDF generated successfully at $OUTPUT_PDF"
-              else
-                  echo "::warning file=$IFLOW_NAME::Markdown file not found for PDF conversion: $INPUT_MD"
-              fi
+              # Add a visible break before the next document starts, ensuring a new page
+              echo "\n<div style=\"page-break-after: always; border-top: 5px solid #1f4e79; margin-top: 50px;\"></div>\n" >> "$OUTPUT_MD"
+              cat "$FILE" >> "$OUTPUT_MD"
+              
+              # Save the location for the new step
+              echo "concatenated_file=$OUTPUT_MD" >> $GITHUB_OUTPUT
           done
+
+      - name: 📝 Generate Single PDF using GitHub Action
+        if: steps.concatenate.outputs.concatenated_file != ''
+        id: pdf_action
+        uses: actions-js/markdown-to-pdf@v1.0.0
+        with:
+          # Use the concatenated file from the previous step
+          input_path: ${{ steps.concatenate.outputs.concatenated_file }}
           
-          # Clean up the temporary header file
-          rm -f "$HEADER_FILE"
+          # Set the output path to the combined documentation folder
+          output_path: ${{ steps.concatenate.outputs.concatenated_file }}.pdf
+          
+          # Use the same parameters as before for formatting
+          page-size: A4
+          margin: 0.8in 0.5in 0.8in 0.5in
+          
+          # Note: This action does not directly support repeatable HTML headers
+          # but is highly reliable for core conversion. We rely on the cover page
+          # and internal document formatting for branding.
 
-      # --- END CORRECTED STEP FOR PDF GENERATION WITH REPEATING HEADER (Attempt 3) ---
-
+      # --- END NEW STEPS FOR PDF GENERATION WITH ACTION ---
 
       - name: Commit All Generated Files (MD and PDF)
         if: steps.documentation_step.outputs.docs_generated == 'true'
@@ -286,15 +285,17 @@ jobs:
           PKG_ID="${{ github.event.inputs.package_id }}"
           # Commit both Markdown and the new PDF files
           OUTPUT_PATH_MD="cpi-artifacts/$PKG_ID/**/*_Summary.md"
-          OUTPUT_PATH_PDF="cpi-artifacts/$PKG_ID/**/*_Summary.pdf"
+          OUTPUT_PATH_COMBINED_MD="cpi-artifacts/$PKG_ID/Combined_CPI_Documentation.md"
+          OUTPUT_PATH_PDF="cpi-artifacts/$PKG_ID/Combined_CPI_Documentation.md.pdf"
                       
           git add "$OUTPUT_PATH_MD"
+          git add "$OUTPUT_PATH_COMBINED_MD"
           git add "$OUTPUT_PATH_PDF"
                       
-          if git diff --cached --quiet "$OUTPUT_PATH_MD" && git diff --cached --quiet "$OUTPUT_PATH_PDF"; then
+          if git diff --cached --quiet "$OUTPUT_PATH_MD" && git diff --cached --quiet "$OUTPUT_PATH_COMBINED_MD" && git diff --cached --quiet "$OUTPUT_PATH_PDF"; then
               echo "No meaningful changes detected in the generated documentation files. Skipping commit."
           else
-              git commit -m "🤖 DOCS: Generated/Updated iFlow summaries (MD) and PDFs with repeating headers for package: $PKG_ID (GPT-4o mini)."
+              git commit -m "🤖 DOCS: Generated/Updated iFlow summaries (MD) and Combined PDF for package: $PKG_ID (Action-based conversion)."
               git push
-              echo "✅ All documentation and PDFs committed and pushed to repository."
+              echo "✅ All documentation and the combined PDF committed and pushed to repository."
           fi
