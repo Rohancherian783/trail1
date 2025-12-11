@@ -39,7 +39,7 @@ jobs:
             exit 1
           fi
           
-          # --- Prompt Definitions: STRICT HIERARCHICAL STRUCTURE (using HTML styles) ---
+          # --- Prompt Definitions (Unchanged) ---
           SYSTEM_PROMPT="You are a senior SAP CPI Technical Architect. Your task is to analyze ALL provided code and configuration files from the SINGLE iFlow provided and synthesize them into ONE consolidated Markdown documentation report. You MUST adhere strictly to the following hierarchical 6-point structure. CRITICALLY, you MUST ONLY use the required inline HTML tags for all headings (H1 and H2) to ensure the dark blue color (#1f4e79) is applied. DO NOT use Markdown heading syntax (# or ##) for the main report body. Ensure all technical details (like Groovy, XSLT, Adapters, Security) are thoroughly explained within the relevant sections.
 
           **MANDATORY FIRST SECTION: TABLE OF CONTENTS (TOC) PAGE**
@@ -108,15 +108,17 @@ jobs:
               GENERATED_TEXT=$(echo "$API_RESPONSE" | jq -r ".choices[0].message.content")
               
               if [ "$GENERATED_TEXT" != "null" ] && [ -n "$GENERATED_TEXT" ]; then
-                # ... (Cover page generation logic remains the same) ...
-                
+                # DYNAMIC METADATA COLLECTION
                 AUTHOR=$(git log -1 --pretty=format:'%an')
                 DATE=$(date +'%Y-%m-%d')
                 VERSION=$(git rev-parse --short HEAD)
                 CLEAN_IFLOW_NAME=$(echo "$IFLOW_NAME" | sed 's/_/ /g')
+                
+                # --- LOGO URLS (used on Cover Page only) ---
                 SAP_LOGO_URL="https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/sap_logo.png"
                 MOTIVEMINDS_LOGO_URL="https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/motiveminds_logo.png"
 
+                # COVER PAGE GENERATION (unchanged HTML structure)
                 SAP_LOGO_BLOCK="<div style=\"float: left; text-align: left;\"><img src=\"$SAP_LOGO_URL\" alt=\"SAP Logo\" width=\"150\" height=\"60\"/></div>"
                 MOTIVEMINDS_LOGO_BLOCK="<div style=\"float: right; text-align: right;\"><img src=\"$MOTIVEMINDS_LOGO_URL\" alt=\"motiveminds Logo\" width=\"150\" height=\"55\" style=\"margin-top: 5px;\"/></div>"
                 COVER_PAGE_CONTENT="${SAP_LOGO_BLOCK}${MOTIVEMINDS_LOGO_BLOCK}<div style=\"clear: both;\"></div><div style=\"height: 80px;\"></div>"
@@ -149,7 +151,7 @@ jobs:
           echo "docs_generated=$ALL_DOCS_GENERATED" >> $GITHUB_OUTPUT
 
 
-      # --- Step 2: Pre-Process Mermaid Code Blocks to SVG Images (Mermaid-to-SVG conversion) ---
+      # --- Step 2: Pre-Process Mermaid Code Blocks to SVG Images (UNCHANGED) ---
       - name: 🖼️ Convert Mermaid Code Blocks to SVG Images
         if: steps.documentation_step.outputs.docs_generated == 'true'
         id: mermaid_convert
@@ -165,19 +167,10 @@ jobs:
               if [ -f "$INPUT_MD" ]; then
                   echo "::notice file=$INPUT_MD::Processing Mermaid in $INPUT_MD"
                   
-                  SVG_DIR="$IFLOW_DIR/mermaid_svgs"
+                  SVG_DIR_NAME="mermaid_svgs"
+                  SVG_DIR="$IFLOW_DIR/$SVG_DIR_NAME"
                   mkdir -p "$SVG_DIR"
                   
-                  # Use grep to find the content between ```mermaid and ```
-                  # and replace it with SVG images.
-                  
-                  # This block is highly complex due to multi-line shell scripting and path handling.
-                  # To avoid repeating the previous logic which was prone to sed/awk errors,
-                  # we simplify by executing a script that uses a reliable language (like Python/Node, 
-                  # but we stick to shell tools as they are readily available).
-                  
-                  # The most robust shell way to replace multi-line blocks is using temporary files.
-
                   TEMP_MD_CONTENT=""
                   IN_MERMAID_BLOCK=false
                   MERMAID_CODE=""
@@ -200,7 +193,6 @@ jobs:
                           
                           echo "::notice::Converting Mermaid block $BLOCK_COUNTER to $SVG_FILE"
                           
-                          # Execute the Mermaid-to-SVG conversion using Docker
                           /usr/bin/docker run --rm \
                               -v "$(pwd):/data" \
                               ${{ env.MERMAID_IMAGE }} \
@@ -212,9 +204,10 @@ jobs:
                                   continue
                               }
                           
-                          # If successful, replace the block with the image tag
-                          # Use the relative path for the image for correct linking in the combined MD
-                          REPLACEMENT_LINK="<img src='file:///$OUTPUT_SVG' alt='Mermaid Diagram' style='max-width: 100%; height: auto; display: block; margin: 20px auto;'/>"
+                          # Use RELATIVE MD Link
+                          RELATIVE_SVG_PATH="./$(basename "$IFLOW_DIR")/$SVG_DIR_NAME/$SVG_FILE"
+                          REPLACEMENT_LINK="![Mermaid Diagram]($RELATIVE_SVG_PATH)"
+                          
                           TEMP_MD_CONTENT+="$REPLACEMENT_LINK"$'\n'
                           rm -f "$BLOCK_FILE"
                           
@@ -225,14 +218,13 @@ jobs:
                       fi
                   done < "$INPUT_MD"
                   
-                  # Overwrite the original MD file with the SVG-replaced content
                   echo -e "$TEMP_MD_CONTENT" > "$INPUT_MD"
                   echo "::notice::Markdown file updated with SVG image links."
               fi
           done
 
 
-      # --- Step 3: Consolidate Markdown (UPDATED to reference pre-processed MD) ---
+      # --- Step 3: Consolidate Markdown (UNCHANGED) ---
       - name: 📦 Consolidate All iFlow Markdown Files
         if: steps.documentation_step.outputs.docs_generated == 'true'
         id: consolidate_md
@@ -257,23 +249,59 @@ jobs:
           echo "::set-output name=combined_md_path::$OUTPUT_MD"
 
 
-      # --- Step 4: Single-Step Docker Conversion (The CLEAN Pandoc Run) ---
+      # --- Step 4A: NEW! Create Custom LaTeX Header for Repeating Logos ---
+      - name: 📝 Create LaTeX Header File
+        if: steps.consolidate_md.outputs.combined_md_path != ''
+        id: create_latex_header
+        env:
+          PKG_ID: ${{ github.event.inputs.package_id }}
+          SAP_LOGO_URL: "https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/sap_logo.png"
+          MOTIVEMINDS_LOGO_URL: "https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/motiveminds_logo.png"
+          
+        run: |
+          HEADER_FILE="cpi-artifacts/$PKG_ID/header.tex"
+          
+          # We use the fancyhdr package for custom headers/footers and graphicx for images.
+          # We use \pagestyle{fancy} to enable the custom header/footer on all pages EXCEPT pages where \thispagestyle{empty} is used (like the cover page).
+          
+          # The \\headrulewidth{0.4pt} creates the horizontal line beneath the header.
+          
+          echo '\usepackage{fancyhdr}' > "$HEADER_FILE"
+          echo '\usepackage{graphicx}' >> "$HEADER_FILE"
+          echo '\pagestyle{fancy}' >> "$HEADER_FILE"
+          echo '\fancyhf{}' >> "$HEADER_FILE" # Clear default headers/footers
+
+          # --- Header Definition (Pages 2+) ---
+          echo '\fancyhead[L]{\includegraphics[width=1.5cm]{'${{ env.SAP_LOGO_URL }}'}}' >> "$HEADER_FILE" # Left: SAP Logo
+          echo '\fancyhead[C]{\textbf{\footnotesize SAP CPI Technical Specification}}' >> "$HEADER_FILE" # Center: Title
+          echo '\fancyhead[R]{\includegraphics[width=1.5cm]{'${{ env.MOTIVEMINDS_LOGO_URL }}'}}' >> "$HEADER_FILE" # Right: Motiveminds Logo
+          echo '\renewcommand{\headrulewidth}{0.4pt}' >> "$HEADER_FILE" # Horizontal line under header
+
+          # --- Footer Definition (Pages 2+) ---
+          # Add the page number centered in the footer
+          echo '\fancyfoot[C]{\thepage}' >> "$HEADER_FILE"
+          echo '\renewcommand{\footrulewidth}{0.0pt}' >> "$HEADER_FILE" # No line under footer
+
+          echo "::set-output name=latex_header_path::$HEADER_FILE"
+
+      # --- Step 4B: Single-Step Docker Conversion (UPDATED to include header.tex) ---
       - name: 📄 Convert Combined Markdown to PDF using Clean Pandoc Run
         if: steps.consolidate_md.outputs.combined_md_path != ''
         env:
           PKG_ID: ${{ github.event.inputs.package_id }}
           INPUT_MD: ${{ steps.consolidate_md.outputs.combined_md_path }}
           OUTPUT_PDF: cpi-artifacts/${{ github.event.inputs.package_id }}/Combined_CPI_Documentation.pdf
+          LATEX_HEADER: ${{ steps.create_latex_header.outputs.latex_header_path }}
           
         run: |
           INPUT_MD_PATH="${{ env.INPUT_MD }}"
           OUTPUT_PDF_PATH="${{ env.OUTPUT_PDF }}"
+          LATEX_HEADER_PATH="${{ env.LATEX_HEADER }}"
           
           echo "::notice::Starting single-step Markdown-to-PDF conversion using pandoc/latex."
           
-          # The Pandoc command is now simplified, using the MD with embedded SVG links.
-          # We use the raw_html extension for the cover page HTML and the SVG image tags.
-          
+          # Pandoc command now includes --include-in-header to inject the fancyhdr commands.
+          # The pandoc/latex image should have the necessary packages (fancyhdr, graphicx)
           /usr/bin/docker run --rm \
               -v "$(pwd):/data" \
               pandoc/latex \
@@ -284,10 +312,11 @@ jobs:
               --pdf-engine=xelatex \
               -V geometry:margin=0.5in \
               --toc \
-              --toc-depth=3
+              --toc-depth=3 \
+              --include-in-header "$LATEX_HEADER_PATH"
               
           if [ $? -ne 0 ]; then
-              echo "::error::Final PDF conversion failed with exit code $?. The input Markdown/HTML in $INPUT_MD_PATH is likely invalid for LaTeX."
+              echo "::error::Final PDF conversion failed with exit code $?. This may be due to complex LaTeX/image path issues."
               echo "::warning::Attempting fallback conversion to HTML for debugging."
               /usr/bin/docker run --rm \
                   -v "$(pwd):/data" \
@@ -303,7 +332,7 @@ jobs:
 
           echo "::notice::Final PDF generated successfully at $OUTPUT_PDF_PATH"
 
-      # --- Step 5: COMMIT STEP (FIXED FOR NON-EXISTENT FILES) ---
+      # --- Step 5: COMMIT STEP (Unchanged) ---
       - name: 💾 Commit All Generated Files (MD, SVG, and PDF)
         if: steps.documentation_step.outputs.docs_generated == 'true'
         run: |
@@ -317,7 +346,6 @@ jobs:
               PDF_GENERATED_FLAG="true"
           fi
 
-          # Define all possible paths
           OUTPUT_PATH_MD="cpi-artifacts/$PKG_ID/**/*_Summary.md"
           OUTPUT_PATH_COMBINED_MD="cpi-artifacts/$PKG_ID/Combined_CPI_Documentation.md"
           OUTPUT_PATH_SVG="cpi-artifacts/$PKG_ID/**/*_svgs/*.svg"
@@ -329,17 +357,15 @@ jobs:
           git add "$OUTPUT_PATH_COMBINED_MD"
           
           echo "Adding optional SVG files (if they exist)..."
-          # Use find and xargs to safely add files only if they exist
           find "cpi-artifacts/$PKG_ID" -type f -name '*.svg' -print0 | xargs -0 git add || true
           
           echo "Adding optional PDF/HTML files (if they exist)..."
           find "cpi-artifacts/$PKG_ID" -type f \( -name '*.pdf' -o -name '*.html' \) -print0 | xargs -0 git add || true
                       
-          # Check if there are any staged changes to commit
           if git diff --staged --quiet; then
               echo "No meaningful changes detected in the generated documentation files. Skipping commit."
           else
-              COMMIT_MESSAGE="🤖 DOCS: Generated/Updated iFlow summaries (MD) and Combined PDF for package: $PKG_ID (Pre-processed Mermaid to SVG fix)."
+              COMMIT_MESSAGE="🤖 DOCS: Generated/Updated iFlow summaries (MD) and Combined PDF for package: $PKG_ID (Repeating Logos via LaTeX Header fix)."
               if [ "$PDF_GENERATED_FLAG" == "false" ]; then
                   COMMIT_MESSAGE="⚠️ DOCS: Generated MD files, but PDF conversion failed for package: $PKG_ID. (See fallback HTML artifact)"
               fi
