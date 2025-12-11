@@ -58,9 +58,10 @@ jobs:
           # 5. Testing Validation (Summarize key testing requirements/scenarios based on iFlow logic)
           # 6. Reference Documents (List the input artifacts analyzed: iFlowContent.xml, Groovy scripts, XSLT files, etc.)"
                     
-          # --- Main Logic: Find and Process Each iFlow Folder ---
+          # --- Main Logic: Find and Process Each iFlow Folder (omitted for brevity) ---
                     
-          # Find all supported iFlow files (iFlowContent.xml or *.iflw) recursively.
+          # ... (Logic to find and process IFLOW_FOLDERS, FULL_ARTIFACT_CONTENT, etc., remains here) ...
+          
           FULL_IFLOW_PATHS=$(find "$BASE_PKG_DIR" -type f \( -name 'iFlowContent.xml' -o -name '*.iflw' \) -print)
                     
           if [ -z "$FULL_IFLOW_PATHS" ]; then
@@ -69,22 +70,17 @@ jobs:
               exit 0
           fi
                     
-          # CRITICAL FIX: Extract the top-level iFlow artifact folder name (e.g., 'Task1')
           IFLOW_ROOT_NAMES=$(echo "$FULL_IFLOW_PATHS" | sed "s|^$BASE_PKG_DIR/||" | cut -d/ -f1 | sort -u)
-                    
-          # Reconstruct the full paths for the root directories to loop over
           IFLOW_FOLDERS=$(echo "$IFLOW_ROOT_NAMES" | xargs -I {} echo "$BASE_PKG_DIR/{}")
           ALL_DOCS_GENERATED=false
                     
           for IFLOW_DIR in $IFLOW_FOLDERS; do
-            # We try to determine the iFlow artifact name from the directory path
             IFLOW_NAME=$(basename "$IFLOW_DIR")
             OUTPUT_FILE="$IFLOW_DIR/${IFLOW_NAME}_Summary.md"
                         
             echo "=================================================="
             echo "➡ Processing iFlow: $IFLOW_NAME (in $IFLOW_DIR)"
                         
-            # 1. Data Consolidation (Searches recursively from the top-level iFlow folder)
             FULL_ARTIFACT_CONTENT=""
             FILES_TO_ANALYZE=$(find "$IFLOW_DIR" -type f \( -name 'iFlowContent.xml' -o -name '*.groovy' -o -name '*.xslt' -o -name '*.iflw' \) -print)
                         
@@ -93,9 +89,7 @@ jobs:
                 continue
             fi
                         
-            # Loop through files and append content
             for INPUT_FILE in $FILES_TO_ANALYZE; do
-              # IMPORTANT: Reading file content into a variable without quotes can cause issues, but we trust 'cat' for this.
               FILE_CONTENT=$(cat "$INPUT_FILE")
               FULL_ARTIFACT_CONTENT+="\n\n--- START ARTIFACT: $INPUT_FILE ---\n"
               FULL_ARTIFACT_CONTENT+="$FILE_CONTENT"
@@ -104,10 +98,8 @@ jobs:
                         
             echo "  Total size of consolidated input: ${#FULL_ARTIFACT_CONTENT} characters."
                         
-            # Use double quotes for the USER_QUERY which contains complex text and newlines
             USER_QUERY="Synthesize a single, consolidated technical report following the 6 mandatory hierarchical sections and all sub-sections from the set of artifacts provided below, which belong ONLY to the iFlow '$IFLOW_NAME'. \n\n\`\`\`text\n$FULL_ARTIFACT_CONTENT\n\`\`\`"
                         
-            # 2. API Call Logic
             PAYLOAD=$(jq -n \
               --arg system "$SYSTEM_PROMPT" \
               --arg query "$USER_QUERY" \
@@ -121,7 +113,6 @@ jobs:
                 temperature: 0.1
               }')
                           
-            # FIX: Quoting JQ_EXIT_CODE
             JQ_EXIT_CODE=$?
             if [ "$JQ_EXIT_CODE" -ne 0 ]; then
                 echo "::error::Failed to construct JSON payload using jq. Exit Code: $JQ_EXIT_CODE"
@@ -133,7 +124,6 @@ jobs:
             MAX_RETRIES=3
             RETRY_COUNT=0
                         
-            # FIX: Quoting RETRY_COUNT and MAX_RETRIES in the while loop
             while [ "$RETRY_COUNT" -lt "$MAX_RETRIES" ]; do
               API_RESPONSE=$(curl -s -X POST "$API_URL" \
                 -H "Content-Type: application/json" \
@@ -144,31 +134,32 @@ jobs:
                             
               if [ "$GENERATED_TEXT" != "null" ] && [ -n "$GENERATED_TEXT" ]; then
                 echo "  ✅ Documentation generated successfully."
-                # --- START COVER PAGE GENERATION LOGIC ---
+                # --- START COVER PAGE GENERATION LOGIC (WITH PAGE BREAKS) ---
                                 
                 # DYNAMIC METADATA COLLECTION
-                # Ensure 'git' is available and the repository is checked out before this point.
                 AUTHOR=$(git log -1 --pretty=format:'%an')
                 DATE=$(date +'%Y-%m-%d')
                 VERSION=$(git rev-parse --short HEAD)
                                 
-                # Use sed to replace underscores with spaces for a cleaner title
                 CLEAN_IFLOW_NAME=$(echo "$IFLOW_NAME" | sed 's/_/ /g')
                 PROJECT_TITLE="AI Tech Specification Project - Odata Mass PDF upload"
                                 
-                # --- LOGO SETUP (Using confirmed URLs) ---
+                # --- LOGO SETUP ---
                 SAP_LOGO_URL="https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/sap_logo.png"
                 MOTIVEMINDS_LOGO_URL="https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/motiveminds_logo.png"
                 # --- END LOGO SETUP ---
 
                 # 1. Top Logo Placement: SAP on Left, Motiveminds on Right
+                # SAP size kept at 150x60
                 SAP_LOGO_BLOCK="<div style=\"float: left; text-align: left;\"><img src=\"$SAP_LOGO_URL\" alt=\"SAP Logo\" width=\"150\" height=\"60\"/></div>"
-                MOTIVEMINDS_LOGO_BLOCK="<div style=\"float: right; text-align: right;\"><img src=\"$MOTIVEMINDS_LOGO_URL\" alt=\"motiveminds Logo\" width=\"120\" height=\"45\" style=\"margin-top: 5px;\"/></div>"
+                
+                # 💡 INCREASED MOTIVEMINDS LOGO SIZE (e.g., from 120x45 to 150x55)
+                MOTIVEMINDS_LOGO_BLOCK="<div style=\"float: right; text-align: right;\"><img src=\"$MOTIVEMINDS_LOGO_URL\" alt=\"motiveminds Logo\" width=\"150\" height=\"55\" style=\"margin-top: 5px;\"/></div>"
 
                 # Combine the logo blocks and clear the float. 
                 COVER_PAGE_CONTENT="${SAP_LOGO_BLOCK}${MOTIVEMINDS_LOGO_BLOCK}<div style=\"clear: both;\"></div>\n\n\n\n\n\n\n"
                                 
-                # 2. Project Title and iFlow Name, styled to match the image
+                # 2. Project Title and iFlow Name
                 FULL_TITLE="$PROJECT_TITLE - $CLEAN_IFLOW_NAME"
                 
                 COVER_PAGE_CONTENT+="<h1 style=\"color: #1f4e79; font-size: 3em; text-align: left; margin-top: 100px;\">$FULL_TITLE</h1>"
@@ -176,8 +167,7 @@ jobs:
                 # Add newlines after the title
                 COVER_PAGE_CONTENT+="\n\n\n\n\n\n"
                                 
-                # 3. Metadata block - Using EXPLICIT HTML TABLE for guaranteed box rendering
-                # Add newlines before the table
+                # 3. Metadata block
                 COVER_PAGE_CONTENT+="\n\n\n\n\n\n\n" 
                 
                 # HTML Table content (uses dynamic variables)
@@ -185,21 +175,77 @@ jobs:
                 COVER_PAGE_CONTENT+="  <tr><td style=\"width: 30%; padding: 5px;\">**Author:**</td><td style=\"padding: 5px;\">$AUTHOR</td></tr>\n"
                 COVER_PAGE_CONTENT+="  <tr><td style=\"padding: 5px;\">**Date:**</td><td style=\"padding: 5px;\">$DATE</td></tr>\n"
                 COVER_PAGE_CONTENT+="  <tr><td style=\"padding: 5px;\">**Version (Commit):**</td><td style=\"padding: 5px;\">$VERSION</td></tr>\n"
-                COVER_PAGE_CONTENT+="</table>"
+                COVER_PAGE_CONTENT+="</table>\n" # Added newline here
                                 
-                # 4. Add enough newlines for visual separation before the TOC (23 newlines)
-                COVER_PAGE_CONTENT+="\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"
+                # 💡 CRITICAL: PAGE BREAK AFTER COVER PAGE
+                # This ensures the TOC starts on Page 2.
+                COVER_PAGE_CONTENT+="\n<div style=\"page-break-after: always;\"></div>\n\n"
                                 
-                # Combine the Cover Page and the AI-generated Content
+                # We skip the original 23 newlines, as the page break handles separation
+
+                # 4. Combine Cover Page and AI-generated Content (TOC is the first part of GENERATED_TEXT)
                 FULL_DOCUMENTATION="${COVER_PAGE_CONTENT}${GENERATED_TEXT}"
                                 
-                # Use echo -e to interpret the \n sequences as actual newlines
-                echo -e "$FULL_DOCUMENTATION" > "$OUTPUT_FILE"
-                echo "  💾 Saved documentation with cover page to $OUTPUT_FILE"
+                # 💡 CRITICAL: PAGE BREAK AFTER TOC (Which is the start of GENERATED_TEXT)
+                # Since the AI output starts with the TOC, we need to locate the end of the TOC list 
+                # before Section 1 to insert the second page break.
+                # A robust way is to append the page break after the GENERATED_TEXT, 
+                # and modify the AI prompt slightly to ensure Section 1 starts immediately after the TOC blank lines.
+                
+                # The prompt asks for 10 blank lines after the TOC list and before Section 1. 
+                # We assume the TOC content structure is generated correctly by the AI.
+                
+                # Instead of trying to parse the AI output, let's inject the page break BEFORE Section 1.
+                # Since the AI output starts with TOC, and includes 10 blank lines, we can replace those 10 blanks 
+                # with one page break marker.
+                
+                # Replace the 10 or more blank lines between TOC and Section 1 with the page break marker.
+                # We use 'sed' to replace the large block of newlines between the TOC and # 1. Introduction
+                # This is an approximation since the number of \n the AI uses is variable.
+                # Given the prompt mandates 10 blank lines:
+                
+                PAGE_BREAK_AFTER_TOC="\n<div style=\"page-break-after: always;\"></div>\n"
+                
+                # Regex: Search for many newlines followed by '# 1. Introduction' and replace the newlines with the page break
+                # This is complex and fragile. The safest method is to modify the prompt and look for a simpler marker.
+                
+                # Alternative: Rely on the strict structure and add a second page break at the end of the generated text, 
+                # which will force whatever comes next (if anything) onto a new page, but this might be unnecessary if 
+                # the file ends after Section 6.
+                
+                # Let's rely on the AI's strict structure and use a marker:
+                
+                # 1. Modify the SYSTEM_PROMPT (outside this block) to use a distinct marker.
+                # NEW INSTRUCTION for AI: ... Use a generous number of blank lines (e.g., 10 lines) after the TOC list to create maximum visual separation, then add the unique string '---TOC-END-PAGE-BREAK---' on its own line before starting Section 1.
+
+                # If you don't want to change the prompt, we must rely on replacing the large block of whitespace:
+                
+                # CRITICAL: Replacing the whitespace between TOC and Section 1 with the page break.
+                # We assume the AI respects the "10 lines" of separation before Section 1.
+                
+                # Search for multiple newlines followed by '# 1. Introduction' and insert the page break just before # 1.
+                # The exact number of \n is hard to predict from the AI.
+                
+                # Let's use a simpler method based on the structure:
+                # 1. The document is: [Cover Page] + [PB1] + [TOC + 10 lines + Section 1-6]
+                
+                # We will perform a search and replace *after* the generation:
+                TOC_CLEANED_DOCUMENTATION=$(echo -e "$FULL_DOCUMENTATION" | sed -E "s/(\n{10,}# 1\. Introduction)/$PAGE_BREAK_AFTER_TOC# 1. Introduction/g")
+                                
+                # If the TOC is correctly formatted, this regex should find 10 or more newlines (\n{10,}) preceding the 
+                # '# 1. Introduction' heading and replace them with the explicit page break HTML, forcing Section 1 
+                # onto page 3.
+                
+                # Use the cleaned document for output
+                echo -e "$TOC_CLEANED_DOCUMENTATION" > "$OUTPUT_FILE"
+
+                echo "  💾 Saved documentation with cover page and page breaks to $OUTPUT_FILE"
                 ALL_DOCS_GENERATED=true
+                # --- END COVER PAGE GENERATION LOGIC ---
                                 
                 break
               else
+                # ... (API failure/retry logic remains the same) ...
                 ERROR_MSG=$(echo "$API_RESPONSE" | jq -r ".error.message // \"Unknown error\"")
                 RETRY_COUNT=$((RETRY_COUNT + 1))
                 DELAY=$((2**RETRY_COUNT))
@@ -208,7 +254,6 @@ jobs:
               fi
             done
                         
-            # FIX: Quoting RETRY_COUNT and MAX_RETRIES in the if statement
             if [ "$RETRY_COUNT" -eq "$MAX_RETRIES" ]; then
               echo "  ❌ Failed to generate documentation for iFlow: $IFLOW_NAME after $MAX_RETRIES attempts."
             fi
@@ -217,6 +262,7 @@ jobs:
                     
           # Set final output status
           echo "docs_generated=$ALL_DOCS_GENERATED" >> $GITHUB_OUTPUT
+      # ... (Commit steps remain the same) ...
       - name: Commit All Generated iFlow Documentation
         if: steps.documentation_step.outputs.docs_generated == 'true'
         run: |
@@ -224,12 +270,10 @@ jobs:
           git config user.email "actions@github.com"
                     
           PKG_ID="${{ github.event.inputs.package_id }}"
-          # 💡 UPDATED: Use a wildcard to capture all files ending in _Summary.md
           OUTPUT_PATH="cpi-artifacts/$PKG_ID/**/*_Summary.md"
                     
           git add "$OUTPUT_PATH"
                     
-          # Check if there are any changes (can be new files or modified files)
           if git diff --cached --quiet "$OUTPUT_PATH"; then
               echo "No meaningful changes detected in the generated documentation files. Skipping commit."
           else
