@@ -114,7 +114,7 @@ jobs:
               
               if [ "$GENERATED_TEXT" != "null" ] && [ -n "$GENERATED_TEXT" ]; then
                 echo "  ✅ Documentation generated successfully."
-                # --- START COVER PAGE GENERATION LOGIC (UPDATED FOR REPEATING HEADER) ---
+                # --- START COVER PAGE GENERATION LOGIC (FIXED SAP LOGO) ---
                 
                 # DYNAMIC METADATA COLLECTION
                 AUTHOR=$(git log -1 --pretty=format:'%an')
@@ -127,15 +127,17 @@ jobs:
                 MOTIVEMINDS_LOGO_URL="https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/motiveminds_logo.png"
                 # --- END LOGO SETUP ---
 
-                # 1. BASE HEADER BLOCK DEFINITION (NO HR TAG, used for all pages)
-                # This defines the floating logos and the clear-float div.
-                BASE_LOGO_HEADER="${SAP_LOGO_BLOCK_COVER}<div style=\"float: right; text-align: right;\"><img src=\"$MOTIVEMINDS_LOGO_URL\" alt=\"motiveminds Logo\" width=\"150\" height=\"55\" style=\"margin-top: 5px;\"/></div><div style=\"clear: both;\"></div>\n"
+                # 1. SAP Logo Block Definition (Used on Left Side)
+                SAP_LOGO_BLOCK="<div style=\"float: left; text-align: left;\"><img src=\"$SAP_LOGO_URL\" alt=\"SAP Logo\" width=\"150\" height=\"60\"/></div>"
                 
-                # 2. REPEATING INJECTION BLOCK (Used for Page 3 onwards)
-                # This block forces a page break, then injects the header block on the new page.
+                # 2. BASE HEADER BLOCK DEFINITION (Combined logos for all pages)
+                # This combines the SAP logo block (left) and the Motiveminds logo (right)
+                BASE_LOGO_HEADER="${SAP_LOGO_BLOCK}<div style=\"float: right; text-align: right;\"><img src=\"$MOTIVEMINDS_LOGO_URL\" alt=\"motiveminds Logo\" width=\"150\" height=\"55\" style=\"margin-top: 5px;\"/></div><div style=\"clear: both;\"></div>\n"
+                
+                # 3. REPEATING INJECTION BLOCK (Used for Section 2 onwards, containing page break + header)
                 HEADER_BLOCK_REPEATING="\n<div style=\"page-break-before: always;\"></div>\n${BASE_LOGO_HEADER}\n"
                                 
-                # 3. COVER PAGE CONTENT (Page 1) - Uses BASE_LOGO_HEADER at the top
+                # 4. COVER PAGE CONTENT (Page 1) - Uses BASE_LOGO_HEADER at the top
                 COVER_PAGE_CONTENT="${BASE_LOGO_HEADER}\n" 
                 COVER_PAGE_CONTENT+="<div style=\"height: 80px;\"></div>"
                 COVER_PAGE_CONTENT+="<h1 style=\"color: ${{ env.HEADING_COLOR }}; font-size: 3em; text-align: center; margin-top: 5px; margin-bottom: 5px;\">$CLEAN_IFLOW_NAME</h1>"
@@ -149,20 +151,16 @@ jobs:
                 COVER_PAGE_CONTENT+="</table>\n"
                 COVER_PAGE_CONTENT+="</div>\n"
                 
-                # 4. Page Break and TOC Header Injection (Page 2)
+                # 5. Page Break and TOC Header Injection (Page 2)
                 # Force Page Break after cover, then inject the BASE_LOGO_HEADER for the TOC page
                 FULL_DOCUMENTATION="${COVER_PAGE_CONTENT}<div style=\"page-break-after: always;\"></div>\n\n${BASE_LOGO_HEADER}\n${GENERATED_TEXT}"
                                 
-                # 5. Inject Repeating Header before every main section heading (Sections 2-6)
-                # This ensures every major section starts on a new page with the logo header
+                # 6. Inject Repeating Header before every main section heading (Sections 2-6)
                 
                 # a) First, replace the TOC marker with just the section content start (Section 1)
-                # We remove the TOC marker and replace it with Section 1's content.
                 FULL_DOCUMENTATION=$(echo -e "$FULL_DOCUMENTATION" | sed -E "s|---TOC-END-PAGE-BREAK---|\n|g")
                 
                 # b) Inject the repeating block before Section 2, 3, 4, 5, and 6.
-                # This uses the H1 heading format (e.g., <h1 style="color: #1f4e79;">2. Integration Overview</h1>) as the marker.
-                # The HEADER_BLOCK_REPEATING contains the page break + the logo header.
                 INJECT_CONTENT=$(echo -n "$HEADER_BLOCK_REPEATING" | sed 's/[\/&]/\\&/g') # Escape content for sed replacement
                 
                 SECTIONS_TO_PAGINATE=("2. Integration Overview" "3. Integration Scenarios" "4. Error Handling and Logging" "5. Testing Validation" "6. Reference Documents")
