@@ -173,7 +173,9 @@ jobs:
                                 
                 # 2. Project Title and iFlow Name, styled to match the image
                 FULL_TITLE="$PROJECT_TITLE - $CLEAN_IFLOW_NAME"
-                COVER_PAGE_CONTENT+="${FULL_TITLE}<h1 style=\"color: #1f4e79; font-size: 3em; text-align: left; margin-top: 100px;\">$FULL_TITLE</h1>"
+                
+                # FIX 1: Remove the redundant plain text variable insertion
+                COVER_PAGE_CONTENT+="<h1 style=\"color: #1f4e79; font-size: 3em; text-align: left; margin-top: 100px;\">$FULL_TITLE</h1>"
                 
                 # Add newlines after the title (no \n)
                 COVER_PAGE_CONTENT+="\n\n\n\n\n\n"
@@ -195,7 +197,8 @@ jobs:
                 # Combine the Cover Page and the AI-generated Content
                 FULL_DOCUMENTATION="${COVER_PAGE_CONTENT}${GENERATED_TEXT}"
                                 
-                echo "$FULL_DOCUMENTATION" > "$OUTPUT_FILE"
+                # FIX 2: Use echo -e to interpret the \n sequences as actual newlines
+                echo -e "$FULL_DOCUMENTATION" > "$OUTPUT_FILE"
                 echo "  💾 Saved documentation with cover page to $OUTPUT_FILE"
                 ALL_DOCS_GENERATED=true
                 # --- END COVER PAGE GENERATION LOGIC ---
