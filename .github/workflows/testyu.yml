@@ -114,7 +114,7 @@ jobs:
               
               if [ "$GENERATED_TEXT" != "null" ] && [ -n "$GENERATED_TEXT" ]; then
                 echo "  ✅ Documentation generated successfully."
-                # --- START COVER PAGE GENERATION LOGIC (FINALIZED PAGE BREAKS & LOGO REPETITION) ---
+                # --- START COVER PAGE GENERATION LOGIC (FINAL LOGIC) ---
                 
                 # DYNAMIC METADATA COLLECTION
                 AUTHOR=$(git log -1 --pretty=format:'%an')
@@ -131,9 +131,10 @@ jobs:
                 SAP_LOGO_BLOCK="<div style=\"float: left; text-align: left;\"><img src=\"$SAP_LOGO_URL\" alt=\"SAP Logo\" width=\"150\" height=\"60\"/></div>"
                 
                 # 2. BASE HEADER BLOCK DEFINITION (Combined logos for all pages)
+                # This must be clean to avoid phantom lines and to encourage PDF tool repetition.
                 BASE_LOGO_HEADER="${SAP_LOGO_BLOCK}<div style=\"float: right; text-align: right;\"><img src=\"$MOTIVEMINDS_LOGO_URL\" alt=\"motiveminds Logo\" width=\"150\" height=\"55\" style=\"margin-top: 5px;\"/></div><div style=\"clear: both;\"></div>"
                 
-                # 3. REPEATING INJECTION BLOCK (Injects header, NO forced page break)
+                # 3. REPEATING INJECTION BLOCK (Only Header, NO forced page break)
                 # This block only inserts the header HTML and a newline.
                 HEADER_INJECTION_ONLY="\n${BASE_LOGO_HEADER}\n"
                 
@@ -152,12 +153,11 @@ jobs:
                 COVER_PAGE_CONTENT+="</div>\n"
                 
                 # 5. Page Break and TOC Header Injection (Page 2)
-                # Force Page Break after cover (P1), then inject the BASE_LOGO_HEADER for the TOC page (P2)
+                # Hard Page Break after cover (P1), then inject the BASE_LOGO_HEADER for the TOC page (P2)
                 FULL_DOCUMENTATION="${COVER_PAGE_CONTENT}<div style=\"page-break-after: always;\"></div>\n\n${BASE_LOGO_HEADER}\n${GENERATED_TEXT}"
                                 
                 # 6. Inject Page Break: TOC Page 2 -> Introduction Page 3
-                # This ensures Section 1 (Introduction) always starts on a new page (Page 3) with the logo header.
-                # Only two hard breaks allowed: Page 1->2 and Page 2->3
+                # Hard Page Break to start Section 1 (P3) with the logo header.
                 PAGE_BREAK_AND_HEADER_TOC_TO_SECTION1="\n<div style=\"page-break-before: always;\"></div>\n${BASE_LOGO_HEADER}\n"
                 ESCAPED_PBH_TOC=$(echo -n "$PAGE_BREAK_AND_HEADER_TOC_TO_SECTION1" | sed 's/[\/&]/\\&/g') # Escape for sed
                 
@@ -165,9 +165,9 @@ jobs:
                 FULL_DOCUMENTATION=$(echo -e "$FULL_DOCUMENTATION" | sed -E "s|---TOC-END-PAGE-BREAK---|${ESCAPED_PBH_TOC}|g")
                 
                 
-                # 7. INJECT REPEATING HEADER BEFORE EVERY SUBSEQUENT H1 SECTION (Sections 2 through 6)
-                # CRITICAL: We inject the header *without* a page break here. This ensures the logo appears 
-                # at the start of every section (P3 onwards) which is the best way to force repetition in this pipeline.
+                # 7. INJECT HEADER BEFORE EVERY SUBSEQUENT H1 SECTION (Sections 2 through 6)
+                # We inject the header *without* a page break here. This ensures the logo appears 
+                # at the start of every section (P3 onwards) and acts as the repeating element.
                 INJECT_CONTENT=$(echo -n "$HEADER_INJECTION_ONLY" | sed 's/[\/&]/\\&/g') # Escape content for sed replacement
                 
                 SECTIONS_TO_PAGINATE=("2. Integration Overview" "3. Integration Scenarios" "4. Error Handling and Logging" "5. Testing Validation" "6. Reference Documents")
@@ -182,9 +182,10 @@ jobs:
                     FULL_DOCUMENTATION=$(echo -e "$FULL_DOCUMENTATION" | sed -E "s|${PATTERN}|${REPLACEMENT}|g")
                 done
 
+
                 # Output the final document
                 echo -e "$FULL_DOCUMENTATION" > "$OUTPUT_FILE"
-                echo "  💾 Saved documentation with clean header and customized pagination to $OUTPUT_FILE"
+                echo "  💾 Saved documentation with two hard page breaks and header injection on all sections to $OUTPUT_FILE"
                 ALL_DOCS_GENERATED=true
                 break
               else
