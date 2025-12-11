@@ -41,13 +41,13 @@ jobs:
             exit 1
           fi
                       
-          # --- Prompt Definitions: STRICT HIERARCHICAL STRUCTURE (UPDATED FOR COLOR) ---
-          SYSTEM_PROMPT="You are a senior SAP CPI Technical Architect. Your task is to analyze ALL provided code and configuration files from the SINGLE iFlow provided and synthesize them into ONE consolidated Markdown documentation report. You MUST adhere strictly to the following hierarchical 6-point structure. You MUST apply the required dark blue color (#1f4e79) to all main headings and subheadings using inline HTML styles (e.g., \`<h1 style=\"color: #1f4e79;\">...</h1>\`). Ensure all technical details (like Groovy, XSLT, Adapters, Security) are thoroughly explained within the relevant sections.
+          # --- Prompt Definitions: STRICT HIERARCHICAL STRUCTURE (FINAL COLOR FIX) ---
+          SYSTEM_PROMPT="You are a senior SAP CPI Technical Architect. Your task is to analyze ALL provided code and configuration files from the SINGLE iFlow provided and synthesize them into ONE consolidated Markdown documentation report. You MUST adhere strictly to the following hierarchical 6-point structure. CRITICALLY, you MUST ONLY use the required inline HTML tags for all headings (H1 and H2) to ensure the dark blue color (#1f4e79) is applied. DO NOT use Markdown heading syntax (# or ##) for the main report body. Ensure all technical details (like Groovy, XSLT, Adapters, Security) are thoroughly explained within the relevant sections.
 
           **MANDATORY FIRST SECTION: TABLE OF CONTENTS (TOC) PAGE**
-          The very first output of the document MUST be the Table of Contents. Format the TOC heading using HTML to achieve a prominent blue color and large font, like this: \`<h1 style=\"color: #1f4e79; font-size: 2.5em;\">Table of Contents</h1>\`. Below this heading, list all 6 main sections and their subsections using standard Markdown numbered list syntax (e.g., 1., 1.1., 1.2., etc.), ensuring proper indentation and **avoiding the use of HTML entities like &nbsp; for spacing**. Use a generous number of blank lines (e.g., 10 lines) after the TOC list to create maximum visual separation, then **add the unique marker '---TOC-END-PAGE-BREAK---' on its own line before starting Section 1.**
+          The very first output of the document MUST be the Table of Contents. Format the TOC heading using HTML to achieve a prominent blue color and large font, like this: <h1 style=\"color: #1f4e79; font-size: 2.5em;\">Table of Contents</h1>. Below this heading, list all 6 main sections and their subsections using standard Markdown numbered list syntax (e.g., 1., 1.1., 1.2., etc.), ensuring proper indentation and **avoiding the use of HTML entities like &nbsp; for spacing**. Use a generous number of blank lines (e.g., 10 lines) after the TOC list to create maximum visual separation, then **add the unique marker '---TOC-END-PAGE-BREAK---' on its own line before starting Section 1.**
 
-          The mandatory sections and their required content mapping, now styled with HTML, are:
+          The mandatory sections, **which MUST be generated using the styled HTML headings only**, are:
           <h1 style=\"color: #1f4e79;\">1. Introduction</h1>
           <h2 style=\"color: #1f4e79;\">1.1 Purpose</h2> (Map: Purpose of this iFlow)
           <h2 style=\"color: #1f4e79;\">1.2 Scope</h2> (Describe the boundaries and systems affected by this single iFlow)
