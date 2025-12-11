@@ -114,7 +114,7 @@ jobs:
               
               if [ "$GENERATED_TEXT" != "null" ] && [ -n "$GENERATED_TEXT" ]; then
                 echo "  ✅ Documentation generated successfully."
-                # --- START COVER PAGE GENERATION LOGIC (FIXED SAP LOGO) ---
+                # --- START COVER PAGE GENERATION LOGIC (FIXED SAP LOGO & TOC PAGE BREAK) ---
                 
                 # DYNAMIC METADATA COLLECTION
                 AUTHOR=$(git log -1 --pretty=format:'%an')
@@ -135,8 +135,9 @@ jobs:
                 BASE_LOGO_HEADER="${SAP_LOGO_BLOCK}<div style=\"float: right; text-align: right;\"><img src=\"$MOTIVEMINDS_LOGO_URL\" alt=\"motiveminds Logo\" width=\"150\" height=\"55\" style=\"margin-top: 5px;\"/></div><div style=\"clear: both;\"></div>\n"
                 
                 # 3. REPEATING INJECTION BLOCK (Used for Section 2 onwards, containing page break + header)
+                # This block forces a page break *before* it, then injects the header block on the new page.
                 HEADER_BLOCK_REPEATING="\n<div style=\"page-break-before: always;\"></div>\n${BASE_LOGO_HEADER}\n"
-                                
+                
                 # 4. COVER PAGE CONTENT (Page 1) - Uses BASE_LOGO_HEADER at the top
                 COVER_PAGE_CONTENT="${BASE_LOGO_HEADER}\n" 
                 COVER_PAGE_CONTENT+="<div style=\"height: 80px;\"></div>"
@@ -155,12 +156,18 @@ jobs:
                 # Force Page Break after cover, then inject the BASE_LOGO_HEADER for the TOC page
                 FULL_DOCUMENTATION="${COVER_PAGE_CONTENT}<div style=\"page-break-after: always;\"></div>\n\n${BASE_LOGO_HEADER}\n${GENERATED_TEXT}"
                                 
-                # 6. Inject Repeating Header before every main section heading (Sections 2-6)
+                # 6. Inject Repeating Header: TOC Page 2 -> Introduction Page 3
+                # We define a block that includes a page break *and* the logo header.
+                PAGE_BREAK_AND_HEADER_TOC_TO_SECTION1="\n<div style=\"page-break-after: always;\"></div>\n\n${BASE_LOGO_HEADER}\n"
+                ESCAPED_PBH_TOC=$(echo -n "$PAGE_BREAK_AND_HEADER_TOC_TO_SECTION1" | sed 's/[\/&]/\\&/g') # Escape for sed
                 
-                # a) First, replace the TOC marker with just the section content start (Section 1)
-                FULL_DOCUMENTATION=$(echo -e "$FULL_DOCUMENTATION" | sed -E "s|---TOC-END-PAGE-BREAK---|\n|g")
+                # Replace the TOC marker with the Page Break + Header block
+                FULL_DOCUMENTATION=$(echo -e "$FULL_DOCUMENTATION" | sed -E "s|---TOC-END-PAGE-BREAK---|${ESCAPED_PBH_TOC}|g")
                 
-                # b) Inject the repeating block before Section 2, 3, 4, 5, and 6.
+                
+                # 7. Inject Repeating Header before every main section heading (Sections 2-6)
+                # The logic for these sections uses the HEADER_BLOCK_REPEATING which contains a page-break-before 
+                
                 INJECT_CONTENT=$(echo -n "$HEADER_BLOCK_REPEATING" | sed 's/[\/&]/\\&/g') # Escape content for sed replacement
                 
                 SECTIONS_TO_PAGINATE=("2. Integration Overview" "3. Integration Scenarios" "4. Error Handling and Logging" "5. Testing Validation" "6. Reference Documents")
@@ -177,7 +184,7 @@ jobs:
 
                 # Output the final document
                 echo -e "$FULL_DOCUMENTATION" > "$OUTPUT_FILE"
-                echo "  💾 Saved documentation with repeating logo header on every new page to $OUTPUT_FILE"
+                echo "  💾 Saved documentation with repeating logo header and correct pagination to $OUTPUT_FILE"
                 ALL_DOCS_GENERATED=true
                 break
               else
