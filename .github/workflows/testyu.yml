@@ -257,9 +257,10 @@ jobs:
 
 
       # --- Step 4: Final Conversion (MD to Self-Contained HTML) ---
-      - name: 📄 Convert Combined Markdown to Self-Contained HTML
+      # This step runs, generates the HTML file for viewing in logs, but the file is NOT committed later.
+      - name: 📄 Convert Combined Markdown to Self-Contained HTML (Local Only)
         if: steps.consolidate_md.outputs.combined_md_path != ''
-        id: html_convert # <-- VALID ID ADDED HERE
+        id: html_convert
         env:
           PKG_ID: ${{ github.event.inputs.package_id }}
           INPUT_MD: ${{ steps.consolidate_md.outputs.combined_md_path }}
@@ -287,12 +288,12 @@ jobs:
               exit 1
           fi
 
-          echo "::notice::Final HTML generated successfully at $OUTPUT_HTML_PATH"
-          echo "html_generated=true" >> $GITHUB_OUTPUT # Correctly setting output
+          echo "::notice::Final HTML generated successfully at $OUTPUT_HTML_PATH (Will NOT be committed to Git)"
+          # Note: We don't set an output variable here as it's not needed by the commit step.
           
 
-      # --- Step 5: COMMIT STEP (UPDATED: Referencing the HTML file) ---
-      - name: 💾 Commit All Generated Files (MD, SVG, and HTML)
+      # --- Step 5: COMMIT STEP (MODIFIED: Excludes HTML file) ---
+      - name: 💾 Commit Generated Markdown and SVG Files (Exclude HTML)
         if: steps.documentation_step.outputs.docs_generated == 'true'
         run: |
           git config user.name "github-actions"
@@ -300,35 +301,28 @@ jobs:
                       
           PKG_ID="${{ github.event.inputs.package_id }}"
           
-          # FIX: Reference the new, valid ID 'html_convert'
-          HTML_GENERATED_FLAG="${{ steps.html_convert.outputs.html_generated }}"
-          
-          # Define all possible paths
+          # Define paths for files that SHOULD be committed
           OUTPUT_PATH_MD="cpi-artifacts/$PKG_ID/**/*_Summary.md"
           OUTPUT_PATH_COMBINED_MD="cpi-artifacts/$PKG_ID/Combined_CPI_Documentation.md"
           OUTPUT_PATH_SVG="cpi-artifacts/$PKG_ID/**/*_svgs/*.svg"
-          OUTPUT_PATH_HTML="cpi-artifacts/$PKG_ID/Combined_CPI_Documentation.html" # New output file
-
+          
           echo "Adding mandatory Markdown files..."
           git add "$OUTPUT_PATH_MD"
           git add "$OUTPUT_PATH_COMBINED_MD"
           
           echo "Adding optional SVG files (if they exist)..."
+          # Use find to ensure we only add existing SVG files
           find "cpi-artifacts/$PKG_ID" -type f -name '*.svg' -print0 | xargs -0 git add || true
           
-          echo "Adding final HTML file (if generated)..."
-          find "cpi-artifacts/$PKG_ID" -type f -name '*.html' -print0 | xargs -0 git add || true # Only search for HTML
+          # CRITICAL: We explicitly do NOT add the HTML file here.
 
           if git diff --staged --quiet; then
               echo "No meaningful changes detected in the generated documentation files. Skipping commit."
           else
-              # Update the commit message to reflect HTML success
-              COMMIT_MESSAGE="🤖 DOCS: Generated/Updated iFlow summaries (MD) and Combined HTML report for package: $PKG_ID."
-              if [ "$HTML_GENERATED_FLAG" != "true" ]; then
-                  COMMIT_MESSAGE="⚠️ DOCS: Generated MD files, but final HTML conversion failed for package: $PKG_ID."
-              fi
+              # Simplified commit message since we only commit MD and SVG files
+              COMMIT_MESSAGE="🤖 DOCS: Generated/Updated iFlow summaries (MD) and Combined Markdown report for package: $PKG_ID."
               
               git commit -m "$COMMIT_MESSAGE"
               git push
-              echo "✅ All documentation and artifacts committed and pushed to repository."
+              echo "✅ All documentation (MD and SVG) committed and pushed to repository."
           fi
