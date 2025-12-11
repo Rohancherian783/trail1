@@ -11,17 +11,25 @@ jobs:
   document:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # Needed to commit the generated documentation
+      contents: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+      
+      # 1. Ensure the assets are checked out, as the template needs them.
+      - name: Locate Logo Assets
+        run: |
+          if [ ! -f "assets/sap_logo.png" ] || [ ! -f "assets/motiveminds_logo.png" ]; then
+            echo "::error::Logo assets not found in the 'assets' directory. They are required for the PDF header template."
+            exit 1
+          fi
 
       - name: Install Dependencies (jq only)
         run: |
           sudo apt-get update
           sudo apt-get install -y jq
 
-      # --- Step 1: Generate Individual iFlow Documentation (MODIFIED: Added Header Block) ---
+      # --- Step 1: Generate Individual iFlow Documentation (MODIFIED: Removed repeating header injection) ---
       - name: 💬 Generate Individual iFlow Documentation via OpenAI API
         id: documentation_step
         env:
@@ -44,7 +52,7 @@ jobs:
 
           **MANDATORY FIRST SECTION: TABLE OF CONTENTS (TOC) PAGE**
           The very first output of the document MUST be the Table of Contents. Format the TOC heading using HTML to achieve a prominent blue color and large font, like this: <h1 style=\"color: #1f4e79; font-size: 2.5em;\">Table of Contents</h1>. Below this heading, list all 6 main sections and their subsections using standard Markdown numbered list syntax (e.g., 1., 1.1., 1.2., etc.), ensuring proper indentation and **avoiding the use of HTML entities like &nbsp; for spacing**. Use a generous number of blank lines (e.g., 10 lines) after the TOC list to create maximum visual separation, then **add the unique marker '---TOC-END-PAGE-BREAK---' on its own line before starting Section 1.**
-
+          
           The mandatory sections, **which MUST be generated using the styled HTML headings only**, are:
           <h1 style=\"color: #1f4e79;\">1. Introduction</h1>
           <h2 style=\"color: #1f4e79;\">1.1 Purpose</h2> (Map: Purpose of this iFlow)
@@ -114,11 +122,13 @@ jobs:
                 VERSION=$(git rev-parse --short HEAD)
                 CLEAN_IFLOW_NAME=$(echo "$IFLOW_NAME" | sed 's/_/ /g')
                 
-                # --- LOGO URLS (used on Cover Page and subsequent pages) ---
-                SAP_LOGO_URL="https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/sap_logo.png"
-                MOTIVEMINDS_LOGO_URL="https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/motiveminds_logo.png"
-
+                # --- LOGO URLS (REMOVED: Use template for repeating logos) ---
+                
                 # COVER PAGE GENERATION (HTML for the cover page remains)
+                # The logos for the COVER PAGE must be kept here using relative paths if they must be visible in the Markdown file when opened directly.
+                SAP_LOGO_URL="./assets/sap_logo.png"
+                MOTIVEMINDS_LOGO_URL="./assets/motiveminds_logo.png"
+                
                 SAP_LOGO_BLOCK_COVER="<div style=\"float: left; text-align: left;\"><img src=\"$SAP_LOGO_URL\" alt=\"SAP Logo\" width=\"150\" height=\"60\"/></div>"
                 MOTIVEMINDS_LOGO_BLOCK_COVER="<div style=\"float: right; text-align: right;\"><img src=\"$MOTIVEMINDS_LOGO_URL\" alt=\"motiveminds Logo\" width=\"150\" height=\"55\" style=\"margin-top: 5px;\"/></div>"
                 COVER_PAGE_CONTENT="${SAP_LOGO_BLOCK_COVER}${MOTIVEMINDS_LOGO_BLOCK_COVER}<div style=\"clear: both;\"></div><div style=\"height: 80px;\"></div>"
@@ -131,16 +141,11 @@ jobs:
                 
                 # Replace the cover page page break with just some vertical space for HTML viewing
                 COVER_PAGE_CONTENT+="\n<div style=\"margin-bottom: 50px;\"></div>\n\n"
+                                                      
+                # The FULL_DOCUMENTATION no longer includes the repeating header injection
+                FULL_DOCUMENTATION="${COVER_PAGE_CONTENT}${GENERATED_TEXT}"
                 
-                # --- NEW HEADER BLOCK FOR ALL SUBSEQUENT PAGES (ADDED HERE) ---
-                SAP_LOGO_BLOCK_HEADER="<div style=\"float: left; text-align: left;\"><img src=\"$SAP_LOGO_URL\" alt=\"SAP Logo\" width=\"120\" height=\"50\"/></div>"
-                MOTIVEMINDS_LOGO_BLOCK_HEADER="<div style=\"float: right; text-align: right;\"><img src=\"$MOTIVEMINDS_LOGO_URL\" alt=\"motiveminds Logo\" width=\"120\" height=\"45\" style=\"margin-top: 5px;\"/></div>"
-                HEADER_BLOCK="${SAP_LOGO_BLOCK_HEADER}${MOTIVEMINDS_LOGO_BLOCK_HEADER}<div style=\"clear: both;\"></div><hr style=\"border: 1px solid #1f4e79; margin-top: 10px; margin-bottom: 10px;\" />\n\n"
-                
-                # CONSTRUCT FINAL DOCUMENT: Cover Page + Header Block + AI Generated Content
-                FULL_DOCUMENTATION="${COVER_PAGE_CONTENT}${HEADER_BLOCK}${GENERATED_TEXT}"
-                
-                # IMPORTANT: Replace the TOC marker with an HTML separator instead of a page break.
+                # IMPORTANT: Replace the TOC marker with an HTML separator
                 HTML_SEPARATOR="\n<hr style=\"border: 3px solid #1f4e79; margin: 40px 0;\" />\n"
                 TOC_CLEANED_DOCUMENTATION=$(echo -e "$FULL_DOCUMENTATION" | sed -E "s|---TOC-END-PAGE-BREAK---|$HTML_SEPARATOR|g")
                 
@@ -176,7 +181,7 @@ jobs:
               
               if [ -f "$INPUT_MD" ]; then
                   echo "::notice file=$INPUT_MD::Processing Mermaid in $INPUT_MD"
-                  
+                  # ... (Mermaid processing logic remains unchanged) ...
                   SVG_DIR_NAME="mermaid_svgs"
                   SVG_DIR="$IFLOW_DIR/$SVG_DIR_NAME"
                   mkdir -p "$SVG_DIR"
@@ -262,41 +267,43 @@ jobs:
           echo "::set-output name=combined_md_path::$OUTPUT_MD"
 
 
-      # --- Step 4: Final Conversion (MD to Self-Contained HTML - Not Committed) ---
-      - name: 📄 Convert Combined Markdown to Self-Contained HTML (Local Only)
+      # --- Step 4: Final Conversion (MODIFIED: Output PDF using custom LaTeX template) ---
+      - name: 📄 Convert Combined Markdown to PDF with Repeating Header
         if: steps.consolidate_md.outputs.combined_md_path != ''
-        id: html_convert
+        id: pdf_convert
         env:
           PKG_ID: ${{ github.event.inputs.package_id }}
           INPUT_MD: ${{ steps.consolidate_md.outputs.combined_md_path }}
-          OUTPUT_HTML: cpi-artifacts/${{ github.event.inputs.package_id }}/Combined_CPI_Documentation.html
+          OUTPUT_PDF: cpi-artifacts/${{ github.event.inputs.package_id }}/Combined_CPI_Documentation.pdf
           
         run: |
           INPUT_MD_PATH="${{ env.INPUT_MD }}"
-          OUTPUT_HTML_PATH="${{ env.OUTPUT_HTML }}"
-          
-          echo "::notice::Starting single-step Markdown-to-HTML conversion."
+          OUTPUT_PDF_PATH="${{ env.OUTPUT_PDF }}"
+          TEMPLATE_PATH=".github/workflows/header_template.tex" # Path to your new template
+
+          echo "::notice::Starting Markdown-to-PDF conversion using custom LaTeX template for repeating headers."
           
           /usr/bin/docker run --rm \
               -v "$(pwd):/data" \
               pandoc/latex \
               "$INPUT_MD_PATH" \
-              -o "$OUTPUT_HTML_PATH" \
+              -o "$OUTPUT_PDF_PATH" \
               --from markdown+yaml_metadata_block+raw_html \
-              --to html5 \
-              --self-contained \
+              --to pdf \
+              --template "$TEMPLATE_PATH" \
               --toc \
-              --toc-depth=3
+              --toc-depth=3 \
+              -V geometry:margin=1in
               
           if [ $? -ne 0 ]; then
-              echo "::error::Final HTML conversion failed with exit code $?."
+              echo "::error::Final PDF conversion failed with exit code $?."
               exit 1 
           fi
 
-          echo "::notice::Final HTML generated successfully at $OUTPUT_HTML_PATH (Will NOT be committed to Git)"
-          
+          echo "::notice::Final PDF generated successfully at $OUTPUT_PDF_PATH (Will NOT be committed to Git)"
 
-      # --- Step 5: COMMIT STEP (MODIFIED: Add Pull/Rebase Logic) ---
+
+      # --- Step 5: COMMIT STEP (UNCHANGED) ---
       - name: 💾 Commit Generated Markdown and SVG Files
         if: steps.documentation_step.outputs.docs_generated == 'true'
         run: |
