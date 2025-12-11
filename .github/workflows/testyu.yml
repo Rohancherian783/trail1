@@ -40,8 +40,7 @@ jobs:
             exit 1
           fi
           
-          # --- Prompt Definitions: STRICT HIERARCHICAL STRUCTURE (MODIFIED) ---
-          # CRITICAL CHANGE: The AI MUST use H1 and H2 HTML tags with inline styles for ALL headings.
+          # --- Prompt Definitions: STRICT HIERARCHICAL STRUCTURE (WITH BLUE HTML HEADINGS) ---
           SYSTEM_PROMPT="You are a senior SAP CPI Technical Architect. Your task is to analyze ALL provided code and configuration files from the SINGLE iFlow provided and synthesize them into ONE consolidated Markdown documentation report. You MUST adhere strictly to the following hierarchical 6-point structure. CRITICALLY, you MUST ONLY use the required inline HTML tags for all headings (H1 and H2) to ensure the dark blue color (\`${{ env.HEADING_COLOR }}\`) is applied. DO NOT use Markdown heading syntax (# or ##) for the main report body headings. Ensure all technical details (like Groovy, XSLT, Adapters, Security) are thoroughly explained within the relevant sections.
 
           **MANDATORY FIRST SECTION: TABLE OF CONTENTS (TOC) PAGE**
@@ -115,7 +114,7 @@ jobs:
               
               if [ "$GENERATED_TEXT" != "null" ] && [ -n "$GENERATED_TEXT" ]; then
                 echo "  ✅ Documentation generated successfully."
-                # --- START COVER PAGE GENERATION LOGIC (ADDED BLUE HR LINE) ---
+                # --- START COVER PAGE GENERATION LOGIC (FINALIZED - HR LINE REMOVED) ---
                 
                 # DYNAMIC METADATA COLLECTION
                 AUTHOR=$(git log -1 --pretty=format:'%an')
@@ -128,14 +127,14 @@ jobs:
                 MOTIVEMINDS_LOGO_URL="https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/motiveminds_logo.png"
                 # --- END LOGO SETUP ---
 
-                # 1. REPEATING HEADER BLOCK DEFINITION (NOW INCLUDES BLUE HR LINE)
+                # 1. REPEATING HEADER BLOCK DEFINITION (Horizontal Rule REMOVED)
                 SAP_LOGO_BLOCK_COVER="<div style=\"float: left; text-align: left;\"><img src=\"$SAP_LOGO_URL\" alt=\"SAP Logo\" width=\"150\" height=\"60\"/></div>"
                 MOTIVEMINDS_LOGO_BLOCK_COVER="<div style=\"float: right; text-align: right;\"><img src=\"$MOTIVEMINDS_LOGO_URL\" alt=\"motiveminds Logo\" width=\"150\" height=\"55\" style=\"margin-top: 5px;\"/></div>"
-                # Added the horizontal rule (hr) style to ensure the blue line is present
-                HEADER_BLOCK_COVER="${SAP_LOGO_BLOCK_COVER}${MOTIVEMINDS_LOGO_BLOCK_COVER}<div style=\"clear: both;\"></div><hr style=\"border: 1px solid ${{ env.HEADING_COLOR }}; margin-top: 10px; margin-bottom: 10px;\" />\n\n"
+                # Removed: <hr style=\"border: 1px solid ${{ env.HEADING_COLOR }}; margin-top: 10px; margin-bottom: 10px;\" />
+                HEADER_BLOCK_COVER="${SAP_LOGO_BLOCK_COVER}${MOTIVEMINDS_LOGO_BLOCK_COVER}<div style=\"clear: both;\"></div>\n\n"
                                 
                 # 2. COVER PAGE CONTENT (Page 1)
-                COVER_PAGE_CONTENT="${HEADER_BLOCK_COVER}" # Logos and blue HR are now at the very top of the cover page
+                COVER_PAGE_CONTENT="${HEADER_BLOCK_COVER}" # Logos at the very top of the cover page
                 COVER_PAGE_CONTENT+="<div style=\"height: 80px;\"></div>"
                 COVER_PAGE_CONTENT+="<h1 style=\"color: ${{ env.HEADING_COLOR }}; font-size: 3em; text-align: center; margin-top: 5px; margin-bottom: 5px;\">$CLEAN_IFLOW_NAME</h1>"
                 COVER_PAGE_CONTENT+="<h2 style=\"color: ${{ env.HEADING_COLOR }}; font-size: 1.5em; text-align: center; margin-top: 5px; margin-bottom: 0px;\">SAP CPI Technical Specification Document</h2>"
@@ -180,7 +179,7 @@ jobs:
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
-                                PKG_ID="${{ github.event.inputs.package_id }}"
+          PKG_ID="${{ github.event.inputs.package_id }}"
           OUTPUT_PATH="cpi-artifacts/$PKG_ID/**/*_Summary.md"
                                 
           git add "$OUTPUT_PATH"
