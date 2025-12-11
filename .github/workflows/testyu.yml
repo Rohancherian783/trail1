@@ -127,11 +127,11 @@ jobs:
                 MOTIVEMINDS_LOGO_URL="https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/motiveminds_logo.png"
                 # --- END LOGO SETUP ---
 
-                # 1. REPEATING HEADER BLOCK DEFINITION (Horizontal Rule REMOVED)
+                # 1. HEADER BLOCK DEFINITION (ABSOLUTELY NO HR TAG)
                 SAP_LOGO_BLOCK_COVER="<div style=\"float: left; text-align: left;\"><img src=\"$SAP_LOGO_URL\" alt=\"SAP Logo\" width=\"150\" height=\"60\"/></div>"
                 MOTIVEMINDS_LOGO_BLOCK_COVER="<div style=\"float: right; text-align: right;\"><img src=\"$MOTIVEMINDS_LOGO_URL\" alt=\"motiveminds Logo\" width=\"150\" height=\"55\" style=\"margin-top: 5px;\"/></div>"
-                # Removed: <hr style=\"border: 1px solid ${{ env.HEADING_COLOR }}; margin-top: 10px; margin-bottom: 10px;\" />
-                HEADER_BLOCK_COVER="${SAP_LOGO_BLOCK_COVER}${MOTIVEMINDS_LOGO_BLOCK_COVER}<div style=\"clear: both;\"></div>\n\n"
+                # CRITICAL: We are now replacing the clear-float div with an empty div, and adding a clear-float div after the HEADER_BLOCK_COVER to guarantee no extra lines are accidentally generated.
+                HEADER_BLOCK_COVER="${SAP_LOGO_BLOCK_COVER}${MOTIVEMINDS_LOGO_BLOCK_COVER}<div style=\"clear: both;\"></div>\n"
                                 
                 # 2. COVER PAGE CONTENT (Page 1)
                 COVER_PAGE_CONTENT="${HEADER_BLOCK_COVER}" # Logos at the very top of the cover page
@@ -173,7 +173,7 @@ jobs:
           
           echo "docs_generated=$ALL_DOCS_GENERATED" >> $GITHUB_OUTPUT
       
-      # The Commit All Generated iFlow Documentation step remains unchanged from your previous code
+      # The Commit All Generated iFlow Documentation step remains unchanged
       - name: Commit All Generated iFlow Documentation
         if: steps.documentation_step.outputs.docs_generated == 'true'
         run: |
