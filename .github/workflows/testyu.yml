@@ -1,4 +1,4 @@
-name: 🤖 CPI Documentation Generationn
+name: 🤖 CPI Documentation Generation
 on:
   workflow_dispatch:
     inputs:
@@ -20,7 +20,6 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y jq
-
       - name: Generate Individual iFlow Documentation via OpenAI API
         id: documentation_step
         env:
@@ -41,36 +40,34 @@ jobs:
             exit 1
           fi
                       
-          # --- Prompt Definitions: STRICT HIERARCHICAL STRUCTURE (FINAL COLOR FIX) ---
-          SYSTEM_PROMPT="You are a senior SAP CPI Technical Architect. Your task is to analyze ALL provided code and configuration files from the SINGLE iFlow provided and synthesize them into ONE consolidated Markdown documentation report. You MUST adhere strictly to the following hierarchical 6-point structure. CRITICALLY, you MUST ONLY use the required inline HTML tags for all headings (H1 and H2) to ensure the dark blue color (#1f4e79) is applied. DO NOT use Markdown heading syntax (# or ##) for the main report body. Ensure all technical details (like Groovy, XSLT, Adapters, Security) are thoroughly explained within the relevant sections.
-
+          # --- Prompt Definitions: STRICT HIERARCHICAL STRUCTURE (UPDATED) ---
+          SYSTEM_PROMPT="You are a senior SAP CPI Technical Architect. Your task is to analyze ALL provided code and configuration files from the SINGLE iFlow provided and synthesize them into ONE consolidated Markdown documentation report. You MUST adhere strictly to the following hierarchical 6-point structure, using Markdown headings (# for main sections, ## for subsections). Ensure all technical details (like Groovy, XSLT, Adapters, Security) are thoroughly explained within the relevant sections.
           **MANDATORY FIRST SECTION: TABLE OF CONTENTS (TOC) PAGE**
-          The very first output of the document MUST be the Table of Contents. Format the TOC heading using HTML to achieve a prominent blue color and large font, like this: <h1 style=\"color: #1f4e79; font-size: 2.5em;\">Table of Contents</h1>. Below this heading, list all 6 main sections and their subsections using standard Markdown numbered list syntax (e.g., 1., 1.1., 1.2., etc.), ensuring proper indentation and **avoiding the use of HTML entities like &nbsp; for spacing**. Use a generous number of blank lines (e.g., 10 lines) after the TOC list to create maximum visual separation, then **add the unique marker '---TOC-END-PAGE-BREAK---' on its own line before starting Section 1.**
-
-          The mandatory sections, **which MUST be generated using the styled HTML headings only**, are:
-          <h1 style=\"color: #1f4e79;\">1. Introduction</h1>
-          <h2 style=\"color: #1f4e79;\">1.1 Purpose</h2> (Map: Purpose of this iFlow)
-          <h2 style=\"color: #1f4e79;\">1.2 Scope</h2> (Describe the boundaries and systems affected by this single iFlow)
-          <h1 style=\"color: #1f4e79;\">2. Integration Overview</h1>
-          <h2 style=\"color: #1f4e79;\">2.1 Integration Architecture</h2> (Map: High-level architecture + Process Diagram)
+          The very first output of the document MUST be the Table of Contents. Format the TOC heading using HTML to achieve a prominent blue color and large font, like this: \`<h1 style=\"color: #1f4e79; font-size: 2.5em;\">Table of Contents</h1>\`. Below this heading, list all 6 main sections and their subsections using standard Markdown numbered list syntax (e.g., 1., 1.1., 1.2., etc.), ensuring proper indentation and **avoiding the use of HTML entities like &nbsp; for spacing**. Use a generous number of blank lines (e.g., 10 lines) after the TOC list to create maximum visual separation, then **add the unique marker '---TOC-END-PAGE-BREAK---' on its own line before starting Section 1.**
+          The mandatory sections and their required content mapping are:
+          # 1. Introduction
+          ## 1.1 Purpose (Map: Purpose of this iFlow)
+          ## 1.2 Scope (Describe the boundaries and systems affected by this single iFlow)
+          # 2. Integration Overview
+          ## 2.1 Integration Architecture (Map: High-level architecture + Process Diagram)
           (Output the High-Level Process Flow Diagram immediately after the architecture text using only Mermaid syntax within a \`\`\`mermaid code block. The diagram must be a 'graph TD' (Top-Down) flowchart showing the major systems and their high-level interaction points, NOT the low-level iFlow steps. **CRITICAL: Ensure there is one blank line immediately following the closing \`\`\` of the Mermaid block.**)
-          <h2 style=\"color: #1f4e79;\">2.2 Integration Components</h2> (Map: Sender/Receiver systems + Adapter types used)
-          <h1 style=\"color: #1f4e79;\">3. Integration Scenarios</h1>
-          <h2 style=\"color: #1f4e79;\">3.1 Scenario Description</h2> (Map: Step-by-step flow explanation detailing the iFlow path)
-          <h2 style=\"color: #1f4e79;\">3.2 Data Flows</h2> (Map: Mapping logic summary (XSLT/Mappings) + Groovy script explanations (usage/purpose))
-          <h2 style=\"color: #1f4e79;\">3.3 Security Requirements</h2> (Map: Security/authentication details on mechanisms, credentials, and configuration)
-          <h1 style=\"color: #1f4e79;\">4. Error Handling and Logging</h1> (Map: Error handling details)
-          <h1 style=\"color: #1f4e79;\">5. Testing Validation</h1> (Summarize key testing requirements/scenarios based on iFlow logic)
-          <h1 style=\"color: #1f4e79;\">6. Reference Documents</h1> (List the input artifacts analyzed: iFlowContent.xml, Groovy scripts, XSLT files, etc.)"
+          ## 2.2 Integration Components (Map: Sender/Receiver systems + Adapter types used)
+          # 3. Integration Scenarios
+          ## 3.1 Scenario Description (Map: Step-by-step flow explanation detailing the iFlow path)
+          ## 3.2 Data Flows (Map: Mapping logic summary (XSLT/Mappings) + Groovy script explanations (usage/purpose))
+          ## 3.3 Security Requirements (Map: Security/authentication details on mechanisms, credentials, and configuration)
+          # 4. Error Handling and Logging (Map: Error handling details)
+          # 5. Testing Validation (Summarize key testing requirements/scenarios based on iFlow logic)
+          # 6. Reference Documents (List the input artifacts analyzed: iFlowContent.xml, Groovy scripts, XSLT files, etc.)"
                       
           # --- Main Logic: Find and Process Each iFlow Folder ---
                       
           FULL_IFLOW_PATHS=$(find "$BASE_PKG_DIR" -type f \( -name 'iFlowContent.xml' -o -name '*.iflw' \) -print)
                       
           if [ -z "$FULL_IFLOW_PATHS" ]; then
-            echo "::warning::No iFlows found (no 'iFlowContent.xml' or '*.iflw' files) in package '$PKG_ID'. Skipping documentation."
-            echo "docs_generated=false" >> $GITHUB_OUTPUT
-            exit 0
+              echo "::warning::No iFlows found (no 'iFlowContent.xml' or '*.iflw' files) in package '$PKG_ID'. Skipping documentation."
+              echo "docs_generated=false" >> $GITHUB_OUTPUT
+              exit 0
           fi
                       
           IFLOW_ROOT_NAMES=$(echo "$FULL_IFLOW_PATHS" | sed "s|^$BASE_PKG_DIR/||" | cut -d/ -f1 | sort -u)
@@ -88,7 +85,7 @@ jobs:
             FILES_TO_ANALYZE=$(find "$IFLOW_DIR" -type f \( -name 'iFlowContent.xml' -o -name '*.groovy' -o -name '*.xslt' -o -name '*.iflw' \) -print)
                           
             if [ -z "$FILES_TO_ANALYZE" ]; then
-                echo "  ⚠️ No supported artifacts found recursively in iFlow directory: $IFLOW_DIR. Skipping."
+                echo "  ⚠️ No supported artifacts found recursively in iFlow directory: $IFLOW_DIR. Skipping."
                 continue
             fi
                           
@@ -99,7 +96,7 @@ jobs:
               FULL_ARTIFACT_CONTENT+="\n--- END ARTIFACT: $INPUT_FILE ---\n"
             done
                           
-            echo "  Total size of consolidated input: ${#FULL_ARTIFACT_CONTENT} characters."
+            echo "  Total size of consolidated input: ${#FULL_ARTIFACT_CONTENT} characters."
                           
             USER_QUERY="Synthesize a single, consolidated technical report following the 6 mandatory hierarchical sections and all sub-sections from the set of artifacts provided below, which belong ONLY to the iFlow '$IFLOW_NAME'. \n\n\`\`\`text\n$FULL_ARTIFACT_CONTENT\n\`\`\`"
                           
@@ -136,7 +133,7 @@ jobs:
               GENERATED_TEXT=$(echo "$API_RESPONSE" | jq -r ".choices[0].message.content")
                               
               if [ "$GENERATED_TEXT" != "null" ] && [ -n "$GENERATED_TEXT" ]; then
-                echo "  ✅ Documentation generated successfully."
+                echo "  ✅ Documentation generated successfully."
                 # --- START COVER PAGE GENERATION LOGIC (FINALIZED) ---
                                       
                 # DYNAMIC METADATA COLLECTION
@@ -150,12 +147,10 @@ jobs:
                 SAP_LOGO_URL="https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/sap_logo.png"
                 MOTIVEMINDS_LOGO_URL="https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/motiveminds_logo.png"
                 # --- END LOGO SETUP ---
-
                 # 1. Top Logo Placement: SAP on Left, Motiveminds on Right
                 SAP_LOGO_BLOCK="<div style=\"float: left; text-align: left;\"><img src=\"$SAP_LOGO_URL\" alt=\"SAP Logo\" width=\"150\" height=\"60\"/></div>"
                 MOTIVEMINDS_LOGO_BLOCK="<div style=\"float: right; text-align: right;\"><img src=\"$MOTIVEMINDS_LOGO_URL\" alt=\"motiveminds Logo\" width=\"150\" height=\"55\" style=\"margin-top: 5px;\"/></div>"
-
-                # Combine the logo blocks and clear the float. 
+                # Combine the logo blocks and clear the float. 
                 COVER_PAGE_CONTENT="${SAP_LOGO_BLOCK}${MOTIVEMINDS_LOGO_BLOCK}<div style=\"clear: both;\"></div>"
                 
                 # Add initial vertical space for centering the titles
@@ -177,9 +172,9 @@ jobs:
                 
                 # HTML Table content (uses dynamic variables) - centered via margin: 0 auto;
                 COVER_PAGE_CONTENT+="<table border=\"1\" style=\"width: 400px; border-collapse: collapse; border-color: black; margin: 0 auto; text-align: left;\">\n"
-                COVER_PAGE_CONTENT+="  <tr><td style=\"width: 30%; padding: 5px;\">**Author:**</td><td style=\"padding: 5px;\">$AUTHOR</td></tr>\n"
-                COVER_PAGE_CONTENT+="  <tr><td style=\"padding: 5px;\">**Date:**</td><td style=\"padding: 5px;\">$DATE</td></tr>\n"
-                COVER_PAGE_CONTENT+="  <tr><td style=\"padding: 5px;\">**Version (Commit):**</td><td style=\"padding: 5px;\">$VERSION</td></tr>\n"
+                COVER_PAGE_CONTENT+="  <tr><td style=\"width: 30%; padding: 5px;\">**Author:**</td><td style=\"padding: 5px;\">$AUTHOR</td></tr>\n"
+                COVER_PAGE_CONTENT+="  <tr><td style=\"padding: 5px;\">**Date:**</td><td style=\"padding: 5px;\">$DATE</td></tr>\n"
+                COVER_PAGE_CONTENT+="  <tr><td style=\"padding: 5px;\">**Version (Commit):**</td><td style=\"padding: 5px;\">$VERSION</td></tr>\n"
                 COVER_PAGE_CONTENT+="</table>\n"
                 COVER_PAGE_CONTENT+="</div>\n" # Close the centering div
                                       
@@ -196,8 +191,7 @@ jobs:
                                       
                 # Use the cleaned document for output
                 echo -e "$TOC_CLEANED_DOCUMENTATION" > "$OUTPUT_FILE"
-
-                echo "  💾 Saved documentation with cover page and page breaks to $OUTPUT_FILE"
+                echo "  💾 Saved documentation with cover page and page breaks to $OUTPUT_FILE"
                 ALL_DOCS_GENERATED=true
                 # --- END COVER PAGE GENERATION LOGIC ---
                                       
@@ -207,20 +201,19 @@ jobs:
                 ERROR_MSG=$(echo "$API_RESPONSE" | jq -r ".error.message // \"Unknown error\"")
                 RETRY_COUNT=$((RETRY_COUNT + 1))
                 DELAY=$((2**RETRY_COUNT))
-                echo "  ⚠️ API call failed: $ERROR_MSG (Attempt $RETRY_COUNT/$MAX_RETRIES). Retrying in $DELAY seconds..."
+                echo "  ⚠️ API call failed: $ERROR_MSG (Attempt $RETRY_COUNT/$MAX_RETRIES). Retrying in $DELAY seconds..."
                 sleep "$DELAY"
               fi
             done
                           
             if [ "$RETRY_COUNT" -eq "$MAX_RETRIES" ]; then
-              echo "  ❌ Failed to generate documentation for iFlow: $IFLOW_NAME after $MAX_RETRIES attempts."
+              echo "  ❌ Failed to generate documentation for iFlow: $IFLOW_NAME after $MAX_RETRIES attempts."
             fi
             echo "=================================================="
           done
                       
           # Set final output status
           echo "docs_generated=$ALL_DOCS_GENERATED" >> $GITHUB_OUTPUT
-
       - name: Commit All Generated iFlow Documentation
         if: steps.documentation_step.outputs.docs_generated == 'true'
         run: |
