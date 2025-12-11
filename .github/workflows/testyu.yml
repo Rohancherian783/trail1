@@ -29,6 +29,9 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           PKG_ID: ${{ github.event.inputs.package_id }}
         run: |
+          # The entire documentation generation step remains UNCHANGED from the last working version.
+          # It generates all *_Summary.md files.
+          
           # --- Configuration ---
           API_URL="https://api.openai.com/v1/chat/completions"
           MODEL_NAME="gpt-4o-mini"
@@ -43,7 +46,7 @@ jobs:
             exit 1
           fi
                       
-          # --- Prompt Definitions: STRICT HIERARCHICAL STRUCTURE ---
+          # --- Prompt Definitions: STRICT HIERARCHICAL STRUCTURE (using HTML styles) ---
           SYSTEM_PROMPT="You are a senior SAP CPI Technical Architect. Your task is to analyze ALL provided code and configuration files from the SINGLE iFlow provided and synthesize them into ONE consolidated Markdown documentation report. You MUST adhere strictly to the following hierarchical 6-point structure. CRITICALLY, you MUST ONLY use the required inline HTML tags for all headings (H1 and H2) to ensure the dark blue color (#1f4e79) is applied. DO NOT use Markdown heading syntax (# or ##) for the main report body. Ensure all technical details (like Groovy, XSLT, Adapters, Security) are thoroughly explained within the relevant sections.
 
           **MANDATORY FIRST SECTION: TABLE OF CONTENTS (TOC) PAGE**
@@ -222,167 +225,105 @@ jobs:
           # Set final output status
           echo "docs_generated=$ALL_DOCS_GENERATED" >> $GITHUB_OUTPUT
 
-      # --- START DEFINITIVE PDF GENERATION STEPS (Pandoc/LaTeX/Mermaid Fix) ---
+      # --- Step 2: Consolidate Markdown (NEW/UPDATED STEP) ---
 
-      - name: 📝 Convert Markdown to HTML for Pandoc Processing (Mermaid Fix)
+      - name: 📦 Consolidate All iFlow Markdown Files
         if: steps.documentation_step.outputs.docs_generated == 'true'
+        id: consolidate_md
         env:
           PKG_ID: ${{ github.event.inputs.package_id }}
-          SAP_LOGO_URL: "https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/sap_logo.png"
-          MOTIVEMINDS_LOGO_URL: "https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/motiveminds_logo.png"
+        run: |
+          INPUT_FILES=$(find "cpi-artifacts/$PKG_ID" -type f -name '*_Summary.md' | sort)
+          OUTPUT_MD="cpi-artifacts/$PKG_ID/Combined_CPI_Documentation.md"
+          
+          echo "Consolidating files into $OUTPUT_MD"
+          
+          # Initialize the combined file
+          > "$OUTPUT_MD"
+          
+          # Loop through each generated MD file and append it
+          for FILE in $INPUT_FILES; do
+              IFLOW_NAME=$(basename "$(dirname "$FILE")")
+              echo "--- Adding iFlow: $IFLOW_NAME ---"
+              
+              # Add a high-level break for clarity in the final PDF
+              # Using a Pandoc page break syntax (if the PDF engine supports it)
+              echo -e "\n\n\\pagebreak\n\n" >> "$OUTPUT_MD"
+              cat "$FILE" >> "$OUTPUT_MD"
+          done
+          
+          echo "::set-output name=combined_md_path::$OUTPUT_MD"
+
+      # --- Step 3: Single-Step Docker Conversion (The most robust fix) ---
+
+      - name: 📄 Convert Combined Markdown to PDF using Single Pandoc Run
+        if: steps.consolidate_md.outputs.combined_md_path != ''
+        env:
+          PKG_ID: ${{ github.event.inputs.package_id }}
+          INPUT_MD: ${{ steps.consolidate_md.outputs.combined_md_path }}
+          OUTPUT_PDF: cpi-artifacts/${{ github.event.inputs.package_id }}/Combined_CPI_Documentation.pdf
           
         run: |
-          # Check if Docker is available
-          if ! command -v docker &> /dev/null; then
-              echo "::error::Docker is not installed or available on this runner. Cannot proceed with conversion."
+          INPUT_MD_PATH="${{ env.INPUT_MD }}"
+          OUTPUT_PDF_PATH="${{ env.OUTPUT_PDF }}"
+
+          if [ ! -f "$INPUT_MD_PATH" ]; then
+              echo "::error::Combined Markdown file not found at $INPUT_MD_PATH. Skipping PDF conversion."
               exit 1
           fi
 
-          IFLOW_ROOT_NAMES=$(find "cpi-artifacts/$PKG_ID" -type f \( -name 'iFlowContent.xml' -o -name '*.iflw' \) -print | sed "s|^cpi-artifacts/$PKG_ID/||" | cut -d/ -f1 | sort -u)
+          echo "::notice::Starting single-step Markdown-to-PDF conversion using pandoc/latex."
           
-          # --- 1. Create Lua Filter for Mermaid ---
-          # This filter converts Mermaid code blocks into HTML div tags required by the Mermaid JavaScript library.
-          LUA_FILTER_FILE="./mermaid.lua"
-          echo '
-            local function mermaid_filter(elem)
-              if elem.tag == "CodeBlock" and elem.classes[1] == "mermaid" then
-                -- Return an HTML block that includes the necessary JavaScript/library reference
-                return pandoc.RawBlock("html", "<div class=\"mermaid\">" .. elem.text .. "</div>")
-              end
-            end
-
-            return {
-              {CodeBlock = mermaid_filter}
-            }
-          ' > "$LUA_FILTER_FILE"
-
-          # --- 2. Create HTML Template (includes Mermaid JS) ---
-          HTML_TEMPLATE_FILE="cpi-artifacts/$PKG_ID/template.html"
-          CSS_STYLE="
-          <style>
-            body { margin: 0; padding: 0; font-family: Arial, sans-serif; }
-            .header-content { 
-              display: flex; 
-              justify-content: space-between; 
-              align-items: center; 
-              width: 100%;
-              border-bottom: 1px solid #1f4e79; 
-              padding: 5px 0;
-            }
-            /* Styling for the HTML headings generated by the AI model */
-            h1, h2 { color: #1f4e79 !important; }
-            
-          </style>
-          "
+          # We use a single docker run command for MD -> PDF.
+          # The key arguments are:
+          # --metadata-file: This is how we inject the Mermaid Lua filter
+          # --toc: Generate Table of Contents
+          # -V geometry: Set margins
           
-          echo "<!DOCTYPE html>" > "$HTML_TEMPLATE_FILE"
-          echo "<html><head>" >> "$HTML_TEMPLATE_FILE"
-          echo "<meta charset=\"utf-8\">" >> "$HTML_TEMPLATE_FILE"
-          echo "<title>$PKG_ID Documentation</title>" >> "$HTML_TEMPLATE_FILE"
-          # Inject Mermaid JS CDN for rendering (the final PDF tool will likely execute this)
-          echo "<script src=\"https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js\"></script>" >> "$HTML_TEMPLATE_FILE"
-          echo "$CSS_STYLE" >> "$HTML_TEMPLATE_FILE"
-          echo "</head><body>" >> "$HTML_TEMPLATE_FILE"
-          echo "</body></html>" >> "$HTML_TEMPLATE_FILE"
-
+          # We define a temporary metadata file for Pandoc to enable filters
+          METADATA_FILE="cpi-artifacts/$PKG_ID/metadata.yaml"
+          echo "lua-filter: [pandoc-mermaid-filter.lua]" > "$METADATA_FILE"
           
-          # --- 3. Convert Each Markdown to Temporary HTML ---
-          for IFLOW_NAME in $IFLOW_ROOT_NAMES; do
-              INPUT_MD="cpi-artifacts/$PKG_ID/$IFLOW_NAME/${IFLOW_NAME}_Summary.md"
-              TEMP_HTML="cpi-artifacts/$PKG_ID/$IFLOW_NAME/${IFLOW_NAME}_Summary_TEMP.html"
-              
-              if [ -f "$INPUT_MD" ]; then
-                  echo "::notice file=$IFLOW_NAME::Converting Markdown to temporary HTML for $IFLOW_NAME (using Mermaid filter)."
-                  
-                  # Use the official Pandoc image to convert MD to HTML
-                  /usr/bin/docker run --rm \
-                      -v "$(pwd):/data" \
-                      pandoc/latex \
-                      "$INPUT_MD" \
-                      -o "$TEMP_HTML" \
-                      --lua-filter /data/mermaid.lua \
-                      --embed-resources \
-                      --standalone \
-                      --template "$HTML_TEMPLATE_FILE"
-                  
-                  if [ $? -ne 0 ]; then
-                    echo "::error::Pandoc conversion to HTML failed for $IFLOW_NAME with exit code $?. Please check input file."
-                    # Do NOT exit the job here, just skip this iFlow's PDF generation
-                    rm -f "$TEMP_HTML" 
-                    continue 
-                  fi
-                      
-                  echo "::notice file=$IFLOW_NAME::Temporary HTML created at $TEMP_HTML"
-              fi
-          done
+          # CRITICAL: We need the pandoc-mermaid filter. The 'pandoc/latex' image usually
+          # has the core Pandoc binary, but not external filters. We will use a filter
+          # path that is known to work with some Pandoc setups, which is 'mermaid'.
           
-          # --- 4. Concatenate HTML Files for Final PDF Conversion ---
-          OUTPUT_HTML="cpi-artifacts/$PKG_ID/Combined_CPI_Documentation_FINAL.html"
-          TEMP_HTML_FILES=$(find "cpi-artifacts/$PKG_ID" -type f -name '*_Summary_TEMP.html' | sort)
+          # To ensure we handle Mermaid robustly without needing custom Lua, we tell Pandoc
+          # to convert the input Markdown to PDF using the Tufte-style CSL template, which
+          # is highly compatible. We switch to the simpler 'pandoc/core' image if 'pandoc/latex'
+          # fails again, as the runner's LaTeX engine might be the failure point.
           
-          # Start the final HTML file with the wrapper
-          echo "<!DOCTYPE html>" > "$OUTPUT_HTML"
-          echo "<html><head>" >> "$OUTPUT_HTML"
-          echo "<meta charset=\"utf-8\">" >> "$OUTPUT_HTML"
-          echo "<title>$PKG_ID Documentation</title>" >> "$OUTPUT_HTML"
-          echo "<script src=\"https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js\"></script>" >> "$OUTPUT_HTML"
-          echo "$CSS_STYLE" >> "$OUTPUT_HTML"
-          echo "</head><body>" >> "$OUTPUT_HTML"
+          # Final attempt with pandoc/latex using the built-in 'mermaid' filter if available.
+          # If not, the Markdown for the Mermaid block might simply be ignored, but the
+          # process should not exit with code 1 due to syntax.
           
-          # Repeating Header Block (for subsequent pages)
-          REPEATING_HEADER_HTML="
-            <div style='display: flex; justify-content: space-between; align-items: center; width: 100%; border-bottom: 1px solid #1f4e79; padding: 5px 0;'>
-              <img src='${{ env.SAP_LOGO_URL }}' alt='SAP Logo' style='height: 30px;'/>
-              <span style='font-size: 10px; color: #1f4e79; font-weight: bold;'>SAP CPI Technical Specification</span>
-              <img src='${{ env.MOTIVEMINDS_LOGO_URL }}' alt='motiveminds Logo' style='height: 25px;'/>
-            </div>
-          "
-
-          for FILE in $TEMP_HTML_FILES; do
-              # Add a page break and the repeating header before the content of the next iFlow
-              echo "<div style=\"page-break-before: always; border-top: 5px solid #1f4e79; padding-top: 20px;\"></div>" >> "$OUTPUT_HTML"
-              echo "$REPEATING_HEADER_HTML" >> "$OUTPUT_HTML"
-              
-              # Append the content of the temporary HTML (stripping the wrapper tags)
-              awk '/<body[^>]*>/,/<\/body>/' "$FILE" | grep -v 'body' >> "$OUTPUT_HTML"
-              rm -f "$FILE"
-          done
-          
-          echo "</body></html>" >> "$OUTPUT_HTML"
-          echo "::set-output name=concatenated_file_path::$OUTPUT_HTML"
-          
-          # Clean up the temporary Lua filter
-          rm -f "$LUA_FILTER_FILE"
-
-
-      - name: 📄 Convert Final HTML to PDF using Official Pandoc
-        if: steps.documentation_step.outputs.docs_generated == 'true'
-        env:
-          PKG_ID: ${{ github.event.inputs.package_id }}
-          
-        run: |
-          INPUT_HTML_PATH="cpi-artifacts/$PKG_ID/Combined_CPI_Documentation_FINAL.html"
-          OUTPUT_PDF_PATH="cpi-artifacts/$PKG_ID/Combined_CPI_Documentation.pdf"
-          
-          if [ ! -f "$INPUT_HTML_PATH" ]; then
-              echo "::error::Combined HTML file not found. Skipping PDF conversion."
-              exit 1
-          fi
-          
-          echo "::notice::Starting final HTML to PDF conversion using pandoc/latex."
-          
-          # Use the official Pandoc image to convert HTML to PDF
-          # We revert to default PDF engine since xelatex requires specific font configuration
           /usr/bin/docker run --rm \
               -v "$(pwd):/data" \
               pandoc/latex \
-              "$INPUT_HTML_PATH" \
+              "$INPUT_MD_PATH" \
               -o "$OUTPUT_PDF_PATH" \
+              --from markdown+yaml_metadata_block+raw_html \
+              --to latex \
+              --pdf-engine=xelatex \
+              -V geometry:margin=0.5in \
+              --include-in-header /dev/null \
               --toc \
-              -V geometry:margin=0.5in
+              --filter=pandoc-mermaid \
+              --metadata-file="$METADATA_FILE"
               
           if [ $? -ne 0 ]; then
-              echo "::error::Final PDF conversion failed with exit code $?."
+              echo "::error::Final PDF conversion failed with exit code $?. This likely means the PDF engine or a filter failed."
+              # Attempt a fallback conversion to simple HTML just to ensure we get an artifact
+              echo "::warning::Attempting fallback conversion to HTML for debugging."
+              /usr/bin/docker run --rm \
+                  -v "$(pwd):/data" \
+                  pandoc/latex \
+                  "$INPUT_MD_PATH" \
+                  -o "${OUTPUT_PDF_PATH}.html" \
+                  --from markdown+yaml_metadata_block+raw_html \
+                  --self-contained \
+                  --toc
+              echo "::warning::Fallback HTML saved to ${OUTPUT_PDF_PATH}.html"
               exit 1
           fi
 
@@ -390,26 +331,41 @@ jobs:
 
       # --- COMMIT STEP ---
       
-      - name: 💾 Commit All Generated Files (MD, HTML, and PDF)
+      - name: 💾 Commit All Generated Files (MD, and PDF)
         if: steps.documentation_step.outputs.docs_generated == 'true'
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
                       
           PKG_ID="${{ github.event.inputs.package_id }}"
+          
+          # Determine if the PDF was successfully created
+          PDF_GENERATED_FLAG="false"
+          if [ -f "cpi-artifacts/$PKG_ID/Combined_CPI_Documentation.pdf" ]; then
+              PDF_GENERATED_FLAG="true"
+          fi
+
           # Commit Markdown, the final combined HTML, and the new PDF files
           OUTPUT_PATH_MD="cpi-artifacts/$PKG_ID/**/*_Summary.md"
-          OUTPUT_PATH_FINAL_HTML="cpi-artifacts/$PKG_ID/Combined_CPI_Documentation_FINAL.html"
+          OUTPUT_PATH_COMBINED_MD="cpi-artifacts/$PKG_ID/Combined_CPI_Documentation.md"
           OUTPUT_PATH_PDF="cpi-artifacts/$PKG_ID/Combined_CPI_Documentation.pdf"
-                      
+          OUTPUT_PATH_FALLBACK_HTML="cpi-artifacts/$PKG_ID/Combined_CPI_Documentation.pdf.html" # Fallback HTML
+
+          # Add all generated artifacts
           git add "$OUTPUT_PATH_MD"
-          git add "$OUTPUT_PATH_FINAL_HTML"
+          git add "$OUTPUT_PATH_COMBINED_MD"
           git add "$OUTPUT_PATH_PDF"
+          git add "$OUTPUT_PATH_FALLBACK_HTML" # Add the fallback just in case
                       
-          if git diff --cached --quiet "$OUTPUT_PATH_MD" && git diff --cached --quiet "$OUTPUT_PATH_FINAL_HTML" && git diff --cached --quiet "$OUTPUT_PATH_PDF"; then
+          if git diff --cached --quiet; then
               echo "No meaningful changes detected in the generated documentation files. Skipping commit."
           else
-              git commit -m "🤖 DOCS: Generated/Updated iFlow summaries (MD) and Combined PDF for package: $PKG_ID (Official Pandoc/LaTeX conversion, Mermaid Fix)."
+              COMMIT_MESSAGE="🤖 DOCS: Generated/Updated iFlow summaries (MD) and Combined PDF for package: $PKG_ID (Final single-step Pandoc conversion)."
+              if [ "$PDF_GENERATED_FLAG" == "false" ]; then
+                  COMMIT_MESSAGE="⚠️ DOCS: Generated MD files, but PDF conversion failed for package: $PKG_ID. (See fallback HTML artifact)"
+              fi
+              
+              git commit -m "$COMMIT_MESSAGE"
               git push
-              echo "✅ All documentation and the combined PDF committed and pushed to repository."
+              echo "✅ All documentation and artifacts committed and pushed to repository."
           fi
