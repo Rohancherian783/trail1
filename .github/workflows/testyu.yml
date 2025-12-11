@@ -178,13 +178,14 @@ jobs:
                 FULL_TITLE="$PROJECT_TITLE - $CLEAN_IFLOW_NAME"
                 COVER_PAGE_CONTENT+="<h1 style=\"color: #1f4e79; font-size: 3em; text-align: left; margin-top: 100px;\">$FULL_TITLE</h1>\n\n\n\n\n\n"
                                 
-                # 3. Metadata block - Using STRICT Markdown Table for guaranteed box rendering
+                # 3. Metadata block - Using EXPLICIT HTML TABLE for guaranteed box rendering
+                # 💡 UPDATED: Replaced Markdown table with HTML <table> for reliable formatting.
                 COVER_PAGE_CONTENT+="\n\n\n\n\n\n\n" 
-                COVER_PAGE_CONTENT+="| Key | Value |\n"
-                COVER_PAGE_CONTENT+="| :--- | :--- |\n"
-                COVER_PAGE_CONTENT+="| Author | $AUTHOR |\n"
-                COVER_PAGE_CONTENT+="| Date | $DATE |\n"
-                COVER_PAGE_CONTENT+="| Version | $VERSION |\n"
+                COVER_PAGE_CONTENT+="<table border=\"1\" style=\"width: 400px; border-collapse: collapse; border-color: black;\">\n"
+                COVER_PAGE_CONTENT+="  <tr><td style=\"width: 30%; padding: 5px;\">**Author:**</td><td style=\"padding: 5px;\">$AUTHOR</td></tr>\n"
+                COVER_PAGE_CONTENT+="  <tr><td style=\"padding: 5px;\">**Date:**</td><td style=\"padding: 5px;\">$DATE</td></tr>\n"
+                COVER_PAGE_CONTENT+="  <tr><td style=\"padding: 5px;\">**Version:**</td><td style=\"padding: 5px;\">$VERSION</td></tr>\n"
+                COVER_PAGE_CONTENT+="</table>\n"
                                 
                 # 4. Add enough newlines for visual separation before the TOC
                 COVER_PAGE_CONTENT+="\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"
