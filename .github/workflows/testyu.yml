@@ -18,10 +18,8 @@ jobs:
 
       - name: Install Dependencies (jq only)
         run: |
-          # jq is needed for JSON manipulation with the OpenAI API
           sudo apt-get update
           sudo apt-get install -y jq
-          # Docker is no longer explicitly needed in the shell steps.
 
       # --- Step 1: Generate Individual iFlow Documentation (Unchanged) ---
       - name: Generate Individual iFlow Documentation via OpenAI API
@@ -223,58 +221,148 @@ jobs:
           # Set final output status
           echo "docs_generated=$ALL_DOCS_GENERATED" >> $GITHUB_OUTPUT
 
-      # --- START NEW STEPS FOR PDF GENERATION WITH ACTION ---
+      # --- START DEFINITIVE PDF GENERATION STEPS (Pandoc/LaTeX) ---
 
-      - name: 📄 Concatenate All iFlow Documents for Single PDF Conversion
+      - name: 📝 Convert Markdown to HTML for Pandoc Processing
         if: steps.documentation_step.outputs.docs_generated == 'true'
-        id: concatenate
         env:
           PKG_ID: ${{ github.event.inputs.package_id }}
+          SAP_LOGO_URL: "https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/sap_logo.png"
+          MOTIVEMINDS_LOGO_URL: "https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/motiveminds_logo.png"
+          
         run: |
-          # Find all generated Markdown files
-          INPUT_FILES=$(find "cpi-artifacts/$PKG_ID" -type f -name '*_Summary.md' | sort)
+          IFLOW_ROOT_NAMES=$(find "cpi-artifacts/$PKG_ID" -type f \( -name 'iFlowContent.xml' -o -name '*.iflw' \) -print | sed "s|^cpi-artifacts/$PKG_ID/||" | cut -d/ -f1 | sort -u)
           
-          # Define the single output file for concatenation
-          OUTPUT_MD="cpi-artifacts/$PKG_ID/Combined_CPI_Documentation.md"
+          # HTML template for the repeating header/footer
+          # We define a basic HTML template for Pandoc to insert, including CSS for the repeating header
           
-          echo "Concatenating files into $OUTPUT_MD"
+          CSS_STYLE="
+          <style>
+            body { margin: 0; padding: 0; font-family: Arial, sans-serif; }
+            .header-content { 
+              display: flex; 
+              justify-content: space-between; 
+              align-items: center; 
+              width: 100%;
+              border-bottom: 1px solid #1f4e79; 
+              padding: 5px 0;
+            }
+            .page-header {
+              position: running(header);
+              padding-top: 10px;
+              padding-bottom: 10px;
+            }
+            @page {
+              margin-top: 1.2in; /* Make space for header */
+              margin-bottom: 0.8in;
+              margin-left: 0.5in;
+              margin-right: 0.5in;
+              @top { content: element(header); }
+            }
+          </style>
+          "
+          REPEATING_HEADER="
+          <div class='page-header' style='height: 1in; width: 100%;'>
+            <div class='header-content'>
+              <img src='${{ env.SAP_LOGO_URL }}' alt='SAP Logo' style='height: 30px;'/>
+              <span style='font-size: 10px; color: #1f4e79; font-weight: bold;'>SAP CPI Technical Specification</span>
+              <img src='${{ env.MOTIVEMINDS_LOGO_URL }}' alt='motiveminds Logo' style='height: 25px;'/>
+            </div>
+          </div>
+          "
           
-          # Initialize the combined file
-          > "$OUTPUT_MD"
+          # Create a basic HTML wrapper template for Pandoc
+          HTML_TEMPLATE_FILE="cpi-artifacts/$PKG_ID/template.html"
+          echo "<!DOCTYPE html>" > "$HTML_TEMPLATE_FILE"
+          echo "<html><head>" >> "$HTML_TEMPLATE_FILE"
+          echo "<meta charset=\"utf-8\">" >> "$HTML_TEMPLATE_FILE"
+          echo "<title>$PKG_ID Documentation</title>" >> "$HTML_TEMPLATE_FILE"
+          echo "$CSS_STYLE" >> "$HTML_TEMPLATE_FILE"
+          echo "</head><body>" >> "$HTML_TEMPLATE_FILE"
           
-          # Loop through each generated MD file and append it to the combined file
-          for FILE in $INPUT_FILES; do
-              IFLOW_NAME=$(basename "$(dirname "$FILE")")
-              echo "--- Adding iFlow: $IFLOW_NAME ---"
+          # Start content insertion after the body tag in the template (Pandoc will do this)
+          # Now, convert each Markdown file to a temporary HTML file
+          for IFLOW_NAME in $IFLOW_ROOT_NAMES; do
+              INPUT_MD="cpi-artifacts/$PKG_ID/$IFLOW_NAME/${IFLOW_NAME}_Summary.md"
+              TEMP_HTML="cpi-artifacts/$PKG_ID/$IFLOW_NAME/${IFLOW_NAME}_Summary_TEMP.html"
               
-              # Add a visible break before the next document starts, ensuring a new page
-              echo "\n<div style=\"page-break-after: always; border-top: 5px solid #1f4e79; margin-top: 50px;\"></div>\n" >> "$OUTPUT_MD"
-              cat "$FILE" >> "$OUTPUT_MD"
-              
-              # Save the location for the new step
-              echo "concatenated_file=$OUTPUT_MD" >> $GITHUB_OUTPUT
+              if [ -f "$INPUT_MD" ]; then
+                  echo "::notice file=$IFLOW_NAME::Converting Markdown to temporary HTML for $IFLOW_NAME."
+                  
+                  # Use the official Pandoc image to convert MD to HTML
+                  /usr/bin/docker run --rm \
+                      -v "$(pwd):/data" \
+                      pandoc/latex \
+                      "$INPUT_MD" \
+                      -o "$TEMP_HTML" \
+                      --embed-resources \
+                      --standalone \
+                      --self-contained \
+                      --template "$HTML_TEMPLATE_FILE" \
+                      --metadata pagetitle="$IFLOW_NAME Documentation"
+                      
+                  echo "::notice file=$IFLOW_NAME::Temporary HTML created at $TEMP_HTML"
+              fi
           done
+          
+          # Concatenate all temporary HTML files into one main document, including the repeating header/footer block
+          OUTPUT_HTML="cpi-artifacts/$PKG_ID/Combined_CPI_Documentation_FINAL.html"
+          TEMP_HTML_FILES=$(find "cpi-artifacts/$PKG_ID" -type f -name '*_Summary_TEMP.html' | sort)
+          
+          # Start the final HTML file with the wrapper
+          echo "<!DOCTYPE html>" > "$OUTPUT_HTML"
+          echo "<html><head>" >> "$OUTPUT_HTML"
+          echo "<meta charset=\"utf-8\">" >> "$OUTPUT_HTML"
+          echo "<title>$PKG_ID Documentation</title>" >> "$OUTPUT_HTML"
+          echo "$CSS_STYLE" >> "$OUTPUT_HTML"
+          echo "</head><body>" >> "$OUTPUT_HTML"
+          
+          # The repeating header MUST be inserted ONLY ONCE and declared as the running element
+          echo "$REPEATING_HEADER" >> "$OUTPUT_HTML"
 
-      - name: 📝 Generate Single PDF using GitHub Action
-        if: steps.concatenate.outputs.concatenated_file != ''
-        id: pdf_action
-        uses: actions-js/markdown-to-pdf@v1.0.0
-        with:
-          # Use the concatenated file from the previous step
-          input_path: ${{ steps.concatenate.outputs.concatenated_file }}
+          for FILE in $TEMP_HTML_FILES; do
+              # Add a page break before the content of the next iFlow HTML
+              echo "<div style=\"page-break-before: always;\"></div>" >> "$OUTPUT_HTML"
+              # Append the content of the temporary HTML (skipping its <html>, <head>, <body> tags)
+              awk '/<body[^>]*>/,/<\/body>/' "$FILE" | grep -v 'body' >> "$OUTPUT_HTML"
+              rm -f "$FILE"
+          done
           
-          # Set the output path to the combined documentation folder
-          output_path: ${{ steps.concatenate.outputs.concatenated_file }}.pdf
-          
-          # Use the same parameters as before for formatting
-          page-size: A4
-          margin: 0.8in 0.5in 0.8in 0.5in
-          
-          # Note: This action does not directly support repeatable HTML headers
-          # but is highly reliable for core conversion. We rely on the cover page
-          # and internal document formatting for branding.
+          echo "</body></html>" >> "$OUTPUT_HTML"
+          echo "concatenated_file_path=$OUTPUT_HTML" >> $GITHUB_OUTPUT
 
-      # --- END NEW STEPS FOR PDF GENERATION WITH ACTION ---
+
+      - name: 📄 Convert Final HTML to PDF using Official Pandoc/LaTeX
+        if: steps.documentation_step.outputs.docs_generated == 'true'
+        env:
+          PKG_ID: ${{ github.event.inputs.package_id }}
+          INPUT_HTML: ${{ steps.documentation_step.outputs.concatenated_file_path }}
+          OUTPUT_PDF: cpi-artifacts/${{ github.event.inputs.package_id }}/Combined_CPI_Documentation.pdf
+          
+        run: |
+          INPUT_HTML_PATH="cpi-artifacts/$PKG_ID/Combined_CPI_Documentation_FINAL.html"
+          OUTPUT_PDF_PATH="cpi-artifacts/$PKG_ID/Combined_CPI_Documentation.pdf"
+          
+          echo "::notice::Starting final HTML to PDF conversion using pandoc/latex."
+          
+          # Use the official Pandoc image to convert the single combined HTML file to PDF
+          # Using --pdf-engine=weasyprint can handle the HTML/CSS better for repeating headers,
+          # but we default to the built-in LuaLaTeX if weasyprint isn't available in the standard image.
+          # We rely on the CSS 'running' element trick for the header, which requires a robust PDF engine.
+          /usr/bin/docker run --rm \
+              -v "$(pwd):/data" \
+              pandoc/latex \
+              --pdf-engine=xelatex \
+              "$INPUT_HTML_PATH" \
+              -o "$OUTPUT_PDF_PATH" \
+              --toc \
+              -V geometry:margin=0.5in \
+              -V mainfont="Arial"
+              
+          echo "::notice::Final PDF generated successfully at $OUTPUT_PDF_PATH"
+
+      # --- END DEFINITIVE PDF GENERATION STEPS (Pandoc/LaTeX) ---
+
 
       - name: Commit All Generated Files (MD and PDF)
         if: steps.documentation_step.outputs.docs_generated == 'true'
@@ -285,17 +373,17 @@ jobs:
           PKG_ID="${{ github.event.inputs.package_id }}"
           # Commit both Markdown and the new PDF files
           OUTPUT_PATH_MD="cpi-artifacts/$PKG_ID/**/*_Summary.md"
-          OUTPUT_PATH_COMBINED_MD="cpi-artifacts/$PKG_ID/Combined_CPI_Documentation.md"
-          OUTPUT_PATH_PDF="cpi-artifacts/$PKG_ID/Combined_CPI_Documentation.md.pdf"
+          OUTPUT_PATH_FINAL_HTML="cpi-artifacts/$PKG_ID/Combined_CPI_Documentation_FINAL.html"
+          OUTPUT_PATH_PDF="cpi-artifacts/$PKG_ID/Combined_CPI_Documentation.pdf"
                       
           git add "$OUTPUT_PATH_MD"
-          git add "$OUTPUT_PATH_COMBINED_MD"
+          git add "$OUTPUT_PATH_FINAL_HTML"
           git add "$OUTPUT_PATH_PDF"
                       
-          if git diff --cached --quiet "$OUTPUT_PATH_MD" && git diff --cached --quiet "$OUTPUT_PATH_COMBINED_MD" && git diff --cached --quiet "$OUTPUT_PATH_PDF"; then
+          if git diff --cached --quiet "$OUTPUT_PATH_MD" && git diff --cached --quiet "$OUTPUT_PATH_FINAL_HTML" && git diff --cached --quiet "$OUTPUT_PATH_PDF"; then
               echo "No meaningful changes detected in the generated documentation files. Skipping commit."
           else
-              git commit -m "🤖 DOCS: Generated/Updated iFlow summaries (MD) and Combined PDF for package: $PKG_ID (Action-based conversion)."
+              git commit -m "🤖 DOCS: Generated/Updated iFlow summaries (MD) and Combined PDF for package: $PKG_ID (Official Pandoc/LaTeX conversion)."
               git push
               echo "✅ All documentation and the combined PDF committed and pushed to repository."
           fi
