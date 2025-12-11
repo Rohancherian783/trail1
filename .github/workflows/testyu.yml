@@ -153,20 +153,21 @@ jobs:
                                 
                 # 6. Inject Page Break: TOC Page 2 -> Introduction Page 3
                 # Hard Page Break to start Section 1 (P3) with the logo header.
-                # NOTE: Sections 2-6 flow continuously after this point.
                 PAGE_BREAK_AND_HEADER_TOC_TO_SECTION1="\n<div style=\"page-break-before: always;\"></div>\n${BASE_LOGO_HEADER}\n"
                 ESCAPED_PBH_TOC=$(echo -n "$PAGE_BREAK_AND_HEADER_TOC_TO_SECTION1" | sed 's/[\/&]/\\&/g') # Escape for sed
                 
                 # Replace the TOC marker with the Page Break + Header block
                 FULL_DOCUMENTATION=$(echo -e "$FULL_DOCUMENTATION" | sed -E "s|---TOC-END-PAGE-BREAK---|${ESCAPED_PBH_TOC}|g")
                 
-                # *** IMPORTANT: NO FURTHER LOGO INJECTION OCCURS. ***
-                # If logos are missing on P4, P5, etc., the external PDF tool must be configured to repeat the header.
+                
+                # --- IMPORTANT: STEP 7 REMOVED ---
+                # The section-wise logo injection (which caused multiple logos per page) has been removed.
+                # The document flow from Section 1 onwards is continuous.
 
 
                 # Output the final document
                 echo -e "$FULL_DOCUMENTATION" > "$OUTPUT_FILE"
-                echo "  💾 Saved documentation with two hard page breaks and single logo injection per logical page (P1, P2, P3) to $OUTPUT_FILE"
+                echo "  💾 Saved documentation with two hard page breaks and clean logo injection for P1, P2, and P3 to $OUTPUT_FILE"
                 ALL_DOCS_GENERATED=true
                 break
               else
