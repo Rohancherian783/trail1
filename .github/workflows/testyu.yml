@@ -1,4 +1,4 @@
-name: 🤖 CPI Documentation Generation
+name: 🤖 CPI Documentation Generationn
 on:
   workflow_dispatch:
     inputs:
