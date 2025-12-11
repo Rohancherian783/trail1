@@ -11,7 +11,7 @@ jobs:
   document:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: write # Needed to commit the generated documentation
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -118,7 +118,7 @@ jobs:
                 SAP_LOGO_URL="https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/sap_logo.png"
                 MOTIVEMINDS_LOGO_URL="https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/motiveminds_logo.png"
 
-                # COVER PAGE GENERATION (unchanged HTML structure)
+                # COVER PAGE GENERATION (HTML for the cover page remains)
                 SAP_LOGO_BLOCK="<div style=\"float: left; text-align: left;\"><img src=\"$SAP_LOGO_URL\" alt=\"SAP Logo\" width=\"150\" height=\"60\"/></div>"
                 MOTIVEMINDS_LOGO_BLOCK="<div style=\"float: right; text-align: right;\"><img src=\"$MOTIVEMINDS_LOGO_URL\" alt=\"motiveminds Logo\" width=\"150\" height=\"55\" style=\"margin-top: 5px;\"/></div>"
                 COVER_PAGE_CONTENT="${SAP_LOGO_BLOCK}${MOTIVEMINDS_LOGO_BLOCK}<div style=\"clear: both;\"></div><div style=\"height: 80px;\"></div>"
@@ -128,14 +128,22 @@ jobs:
                 COVER_PAGE_CONTENT+="<tr><td style=\"width: 30%; padding: 5px;\">**Author:**</td><td style=\"padding: 5px;\">$AUTHOR</td></tr>"
                 COVER_PAGE_CONTENT+="<tr><td style=\"padding: 5px;\">**Date:**</td><td style=\"padding: 5px;\">$DATE</td></tr>"
                 COVER_PAGE_CONTENT+="<tr><td style=\"padding: 5px;\">**Version (Commit):**</td><td style=\"padding: 5px;\">$VERSION</td></tr></table></div>"
-                COVER_PAGE_CONTENT+="\n<div style=\"page-break-after: always;\"></div>\n\n"
+                
+                # IMPORTANT: Remove the page break after the cover page! 
+                # This ensures the TOC appears on the same HTML page, which is best practice for HTML reports.
+                # COVER_PAGE_CONTENT+="\n<div style=\"page-break-after: always;\"></div>\n\n" 
+                
+                # Replace the cover page page break with just some vertical space for HTML viewing
+                COVER_PAGE_CONTENT+="\n<div style=\"margin-bottom: 50px;\"></div>\n\n"
                                       
                 FULL_DOCUMENTATION="${COVER_PAGE_CONTENT}${GENERATED_TEXT}"
-                PAGE_BREAK_AFTER_TOC="\n<div style=\"page-break-after: always;\"></div>\n"
-                TOC_CLEANED_DOCUMENTATION=$(echo -e "$FULL_DOCUMENTATION" | sed -E "s|---TOC-END-PAGE-BREAK---|$PAGE_BREAK_AFTER_TOC|g")
+                
+                # IMPORTANT: Replace the TOC marker with an HTML separator instead of a page break.
+                HTML_SEPARATOR="\n<hr style=\"border: 3px solid #1f4e79; margin: 40px 0;\" />\n"
+                TOC_CLEANED_DOCUMENTATION=$(echo -e "$FULL_DOCUMENTATION" | sed -E "s|---TOC-END-PAGE-BREAK---|$HTML_SEPARATOR|g")
                 
                 echo -e "$TOC_CLEANED_DOCUMENTATION" > "$OUTPUT_FILE"
-                echo "  💾 Saved documentation with cover page and page breaks to $OUTPUT_FILE"
+                echo "  💾 Saved documentation with cover page and separators to $OUTPUT_FILE"
                 ALL_DOCS_GENERATED=true
                 break
               fi
@@ -152,6 +160,7 @@ jobs:
 
 
       # --- Step 2: Pre-Process Mermaid Code Blocks to SVG Images (UNCHANGED) ---
+      # This step is still needed to convert Mermaid to images before the final Pandoc step.
       - name: 🖼️ Convert Mermaid Code Blocks to SVG Images
         if: steps.documentation_step.outputs.docs_generated == 'true'
         id: mermaid_convert
@@ -224,7 +233,7 @@ jobs:
           done
 
 
-      # --- Step 3: Consolidate Markdown (UNCHANGED) ---
+      # --- Step 3: Consolidate Markdown (UPDATED: Removing redundant pagebreak for HTML) ---
       - name: 📦 Consolidate All iFlow Markdown Files
         if: steps.documentation_step.outputs.docs_generated == 'true'
         id: consolidate_md
@@ -238,102 +247,61 @@ jobs:
           
           > "$OUTPUT_MD"
           
+          # Add a simple horizontal rule/break between documents for HTML clarity
+          HTML_DOCUMENT_SEPARATOR="\n\n<hr style=\"border: 6px solid #1f4e79; margin: 60px 0;\" />\n\n"
+
           for FILE in $INPUT_FILES; do
               IFLOW_NAME=$(basename "$(dirname "$FILE")")
               echo "--- Adding iFlow: $IFLOW_NAME ---"
               
-              echo -e "\n\n\\pagebreak\n\n" >> "$OUTPUT_MD"
+              echo -e "$HTML_DOCUMENT_SEPARATOR" >> "$OUTPUT_MD"
               cat "$FILE" >> "$OUTPUT_MD"
           done
           
           echo "::set-output name=combined_md_path::$OUTPUT_MD"
 
 
-      # --- Step 4A: NEW! Create Custom LaTeX Header for Repeating Logos ---
-      - name: 📝 Create LaTeX Header File
-        if: steps.consolidate_md.outputs.combined_md_path != ''
-        id: create_latex_header
-        env:
-          PKG_ID: ${{ github.event.inputs.package_id }}
-          SAP_LOGO_URL: "https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/sap_logo.png"
-          MOTIVEMINDS_LOGO_URL: "https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/motiveminds_logo.png"
-          
-        run: |
-          HEADER_FILE="cpi-artifacts/$PKG_ID/header.tex"
-          
-          # We use the fancyhdr package for custom headers/footers and graphicx for images.
-          # We use \pagestyle{fancy} to enable the custom header/footer on all pages EXCEPT pages where \thispagestyle{empty} is used (like the cover page).
-          
-          # The \\headrulewidth{0.4pt} creates the horizontal line beneath the header.
-          
-          echo '\usepackage{fancyhdr}' > "$HEADER_FILE"
-          echo '\usepackage{graphicx}' >> "$HEADER_FILE"
-          echo '\pagestyle{fancy}' >> "$HEADER_FILE"
-          echo '\fancyhf{}' >> "$HEADER_FILE" # Clear default headers/footers
-
-          # --- Header Definition (Pages 2+) ---
-          echo '\fancyhead[L]{\includegraphics[width=1.5cm]{'${{ env.SAP_LOGO_URL }}'}}' >> "$HEADER_FILE" # Left: SAP Logo
-          echo '\fancyhead[C]{\textbf{\footnotesize SAP CPI Technical Specification}}' >> "$HEADER_FILE" # Center: Title
-          echo '\fancyhead[R]{\includegraphics[width=1.5cm]{'${{ env.MOTIVEMINDS_LOGO_URL }}'}}' >> "$HEADER_FILE" # Right: Motiveminds Logo
-          echo '\renewcommand{\headrulewidth}{0.4pt}' >> "$HEADER_FILE" # Horizontal line under header
-
-          # --- Footer Definition (Pages 2+) ---
-          # Add the page number centered in the footer
-          echo '\fancyfoot[C]{\thepage}' >> "$HEADER_FILE"
-          echo '\renewcommand{\footrulewidth}{0.0pt}' >> "$HEADER_FILE" # No line under footer
-
-          echo "::set-output name=latex_header_path::$HEADER_FILE"
-
-      # --- Step 4B: Single-Step Docker Conversion (UPDATED to include header.tex) ---
-      - name: 📄 Convert Combined Markdown to PDF using Clean Pandoc Run
+      # --- Step 4: Final Conversion (NEW: MD to Self-Contained HTML) ---
+      # This step replaces the two LaTeX-related steps (4A and 4B)
+      - name: 📄 Convert Combined Markdown to Self-Contained HTML
         if: steps.consolidate_md.outputs.combined_md_path != ''
         env:
           PKG_ID: ${{ github.event.inputs.package_id }}
           INPUT_MD: ${{ steps.consolidate_md.outputs.combined_md_path }}
-          OUTPUT_PDF: cpi-artifacts/${{ github.event.inputs.package_id }}/Combined_CPI_Documentation.pdf
-          LATEX_HEADER: ${{ steps.create_latex_header.outputs.latex_header_path }}
+          OUTPUT_HTML: cpi-artifacts/${{ github.event.inputs.package_id }}/Combined_CPI_Documentation.html
           
         run: |
           INPUT_MD_PATH="${{ env.INPUT_MD }}"
-          OUTPUT_PDF_PATH="${{ env.OUTPUT_PDF }}"
-          LATEX_HEADER_PATH="${{ env.LATEX_HEADER }}"
+          OUTPUT_HTML_PATH="${{ env.OUTPUT_HTML }}"
           
-          echo "::notice::Starting single-step Markdown-to-PDF conversion using pandoc/latex."
+          echo "::notice::Starting single-step Markdown-to-HTML conversion."
           
-          # Pandoc command now includes --include-in-header to inject the fancyhdr commands.
-          # The pandoc/latex image should have the necessary packages (fancyhdr, graphicx)
+          # We use a simpler Pandoc Docker image since we don't need LaTeX dependencies
+          # Using 'pandoc/core' is safer, but we can stick to 'pandoc/latex' since it's already pulled.
+          # --self-contained embeds all CSS, images (if local), and resources, making it one portable file.
+          
           /usr/bin/docker run --rm \
               -v "$(pwd):/data" \
               pandoc/latex \
               "$INPUT_MD_PATH" \
-              -o "$OUTPUT_PDF_PATH" \
+              -o "$OUTPUT_HTML_PATH" \
               --from markdown+yaml_metadata_block+raw_html \
-              --to latex \
-              --pdf-engine=xelatex \
-              -V geometry:margin=0.5in \
+              --to html5 \
+              --self-contained \
               --toc \
-              --toc-depth=3 \
-              --include-in-header "$LATEX_HEADER_PATH"
+              --toc-depth=3
               
           if [ $? -ne 0 ]; then
-              echo "::error::Final PDF conversion failed with exit code $?. This may be due to complex LaTeX/image path issues."
-              echo "::warning::Attempting fallback conversion to HTML for debugging."
-              /usr/bin/docker run --rm \
-                  -v "$(pwd):/data" \
-                  pandoc/latex \
-                  "$INPUT_MD_PATH" \
-                  -o "${OUTPUT_PDF_PATH}.html" \
-                  --from markdown+yaml_metadata_block+raw_html \
-                  --self-contained \
-                  --toc
-              echo "::warning::Fallback HTML saved to ${OUTPUT_PDF_PATH}.html"
+              echo "::error::Final HTML conversion failed with exit code $?."
               exit 1
           fi
 
-          echo "::notice::Final PDF generated successfully at $OUTPUT_PDF_PATH"
+          echo "::notice::Final HTML generated successfully at $OUTPUT_HTML_PATH"
+          echo "::set-output name=html_generated::true" # Set output flag for commit step
 
-      # --- Step 5: COMMIT STEP (Unchanged) ---
-      - name: 💾 Commit All Generated Files (MD, SVG, and PDF)
+
+      # --- Step 5: COMMIT STEP (UPDATED: Referencing the HTML file) ---
+      - name: 💾 Commit All Generated Files (MD, SVG, and HTML)
         if: steps.documentation_step.outputs.docs_generated == 'true'
         run: |
           git config user.name "github-actions"
@@ -341,16 +309,13 @@ jobs:
                       
           PKG_ID="${{ github.event.inputs.package_id }}"
           
-          PDF_GENERATED_FLAG="false"
-          if [ -f "cpi-artifacts/$PKG_ID/Combined_CPI_Documentation.pdf" ]; then
-              PDF_GENERATED_FLAG="true"
-          fi
-
+          HTML_GENERATED_FLAG="${{ steps.4_final_conversion.outputs.html_generated }}"
+          
+          # Define all possible paths
           OUTPUT_PATH_MD="cpi-artifacts/$PKG_ID/**/*_Summary.md"
           OUTPUT_PATH_COMBINED_MD="cpi-artifacts/$PKG_ID/Combined_CPI_Documentation.md"
           OUTPUT_PATH_SVG="cpi-artifacts/$PKG_ID/**/*_svgs/*.svg"
-          OUTPUT_PATH_PDF="cpi-artifacts/$PKG_ID/Combined_CPI_Documentation.pdf"
-          OUTPUT_PATH_FALLBACK_HTML="cpi-artifacts/$PKG_ID/Combined_CPI_Documentation.pdf.html"
+          OUTPUT_PATH_HTML="cpi-artifacts/$PKG_ID/Combined_CPI_Documentation.html" # New output file
 
           echo "Adding mandatory Markdown files..."
           git add "$OUTPUT_PATH_MD"
@@ -359,15 +324,16 @@ jobs:
           echo "Adding optional SVG files (if they exist)..."
           find "cpi-artifacts/$PKG_ID" -type f -name '*.svg' -print0 | xargs -0 git add || true
           
-          echo "Adding optional PDF/HTML files (if they exist)..."
-          find "cpi-artifacts/$PKG_ID" -type f \( -name '*.pdf' -o -name '*.html' \) -print0 | xargs -0 git add || true
-                      
+          echo "Adding final HTML file (if generated)..."
+          find "cpi-artifacts/$PKG_ID" -type f -name '*.html' -print0 | xargs -0 git add || true # Only search for HTML
+
           if git diff --staged --quiet; then
               echo "No meaningful changes detected in the generated documentation files. Skipping commit."
           else
-              COMMIT_MESSAGE="🤖 DOCS: Generated/Updated iFlow summaries (MD) and Combined PDF for package: $PKG_ID (Repeating Logos via LaTeX Header fix)."
-              if [ "$PDF_GENERATED_FLAG" == "false" ]; then
-                  COMMIT_MESSAGE="⚠️ DOCS: Generated MD files, but PDF conversion failed for package: $PKG_ID. (See fallback HTML artifact)"
+              # Update the commit message to reflect HTML success
+              COMMIT_MESSAGE="🤖 DOCS: Generated/Updated iFlow summaries (MD) and Combined HTML report for package: $PKG_ID."
+              if [ "$HTML_GENERATED_FLAG" != "true" ]; then
+                  COMMIT_MESSAGE="⚠️ DOCS: Generated MD files, but final HTML conversion failed for package: $PKG_ID."
               fi
               
               git commit -m "$COMMIT_MESSAGE"
