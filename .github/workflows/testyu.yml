@@ -13,7 +13,7 @@ jobs:
       contents: write # Needed to commit the generated documentation
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4 # ⬅️ FIXED: Changed colon (:) to slash (/)
+        uses: actions/checkout@v4
       - name: Install Dependencies (jq only)
         run: |
           sudo apt-get update
@@ -100,6 +100,7 @@ jobs:
             # Loop through files and append content
             for INPUT_FILE in $FILES_TO_ANALYZE; do
               FILE_CONTENT=$(cat "$INPUT_FILE")
+              # Use actual newlines here instead of \n for cleaner separation in the prompt input
               FULL_ARTIFACT_CONTENT+="\n\n--- START ARTIFACT: $INPUT_FILE ---\n"
               FULL_ARTIFACT_CONTENT+="$FILE_CONTENT"
               FULL_ARTIFACT_CONTENT+="\n--- END ARTIFACT: $INPUT_FILE ---\n"
@@ -163,31 +164,32 @@ jobs:
                 # --- END LOGO SETUP ---
 
                 # 1. Top Logo Placement: SAP on Left, Motiveminds on Right
-                # Use two separate floating divs for left/right alignment.
-                
-                # Left (SAP) Logo - Increased size based on visual reference
                 SAP_LOGO_BLOCK="<div style=\"float: left; text-align: left;\"><img src=\"$SAP_LOGO_URL\" alt=\"SAP Logo\" width=\"100\" height=\"40\"/></div>"
-                
-                # Right (Motiveminds) Logo - Adjusted size and margin for visual alignment
                 MOTIVEMINDS_LOGO_BLOCK="<div style=\"float: right; text-align: right;\"><img src=\"$MOTIVEMINDS_LOGO_URL\" alt=\"motiveminds Logo\" width=\"80\" height=\"30\" style=\"margin-top: 5px;\"/></div>"
 
-                # Combine the logo blocks and clear the float
+                # Combine the logo blocks and clear the float. 
+                # Use actual newlines in the script here (no \n)
                 COVER_PAGE_CONTENT="${SAP_LOGO_BLOCK}${MOTIVEMINDS_LOGO_BLOCK}<div style=\"clear: both;\"></div>\n\n\n\n\n\n\n"
                                 
                 # 2. Project Title and iFlow Name, styled to match the image
                 FULL_TITLE="$PROJECT_TITLE - $CLEAN_IFLOW_NAME"
-                COVER_PAGE_CONTENT+="<h1 style=\"color: #1f4e79; font-size: 3em; text-align: left; margin-top: 100px;\">$FULL_TITLE</h1>\n\n\n\n\n\n"
+                COVER_PAGE_CONTENT+="${FULL_TITLE}<h1 style=\"color: #1f4e79; font-size: 3em; text-align: left; margin-top: 100px;\">$FULL_TITLE</h1>"
+                
+                # Add newlines after the title (no \n)
+                COVER_PAGE_CONTENT+="\n\n\n\n\n\n"
                                 
                 # 3. Metadata block - Using EXPLICIT HTML TABLE for guaranteed box rendering
-                # 💡 UPDATED: Replaced Markdown table with HTML <table> for reliable formatting.
+                # Add newlines before the table (no \n)
                 COVER_PAGE_CONTENT+="\n\n\n\n\n\n\n" 
+                
+                # HTML Table content (no \n)
                 COVER_PAGE_CONTENT+="<table border=\"1\" style=\"width: 400px; border-collapse: collapse; border-color: black;\">\n"
                 COVER_PAGE_CONTENT+="  <tr><td style=\"width: 30%; padding: 5px;\">**Author:**</td><td style=\"padding: 5px;\">$AUTHOR</td></tr>\n"
                 COVER_PAGE_CONTENT+="  <tr><td style=\"padding: 5px;\">**Date:**</td><td style=\"padding: 5px;\">$DATE</td></tr>\n"
                 COVER_PAGE_CONTENT+="  <tr><td style=\"padding: 5px;\">**Version:**</td><td style=\"padding: 5px;\">$VERSION</td></tr>\n"
-                COVER_PAGE_CONTENT+="</table>\n"
+                COVER_PAGE_CONTENT+="</table>"
                                 
-                # 4. Add enough newlines for visual separation before the TOC
+                # 4. Add enough newlines for visual separation before the TOC (23 newlines)
                 COVER_PAGE_CONTENT+="\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"
                                 
                 # Combine the Cover Page and the AI-generated Content
