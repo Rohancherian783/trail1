@@ -11,25 +11,17 @@ jobs:
   document:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: write # Needed to commit the generated documentation
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      
-      # 1. Ensure the assets are checked out, as the template needs them.
-      - name: Locate Logo Assets
-        run: |
-          if [ ! -f "assets/sap_logo.png" ] || [ ! -f "assets/motiveminds_logo.png" ]; then
-            echo "::error::Logo assets not found in the 'assets' directory. They are required for the PDF header template."
-            exit 1
-          fi
 
       - name: Install Dependencies (jq only)
         run: |
           sudo apt-get update
           sudo apt-get install -y jq
 
-      # --- Step 1: Generate Individual iFlow Documentation (MODIFIED: Removed repeating header injection) ---
+      # --- Step 1: Generate Individual iFlow Documentation (MODIFIED: Removed prior manual header block, kept cover page logos) ---
       - name: 💬 Generate Individual iFlow Documentation via OpenAI API
         id: documentation_step
         env:
@@ -52,7 +44,7 @@ jobs:
 
           **MANDATORY FIRST SECTION: TABLE OF CONTENTS (TOC) PAGE**
           The very first output of the document MUST be the Table of Contents. Format the TOC heading using HTML to achieve a prominent blue color and large font, like this: <h1 style=\"color: #1f4e79; font-size: 2.5em;\">Table of Contents</h1>. Below this heading, list all 6 main sections and their subsections using standard Markdown numbered list syntax (e.g., 1., 1.1., 1.2., etc.), ensuring proper indentation and **avoiding the use of HTML entities like &nbsp; for spacing**. Use a generous number of blank lines (e.g., 10 lines) after the TOC list to create maximum visual separation, then **add the unique marker '---TOC-END-PAGE-BREAK---' on its own line before starting Section 1.**
-          
+
           The mandatory sections, **which MUST be generated using the styled HTML headings only**, are:
           <h1 style=\"color: #1f4e79;\">1. Introduction</h1>
           <h2 style=\"color: #1f4e79;\">1.1 Purpose</h2> (Map: Purpose of this iFlow)
@@ -122,13 +114,11 @@ jobs:
                 VERSION=$(git rev-parse --short HEAD)
                 CLEAN_IFLOW_NAME=$(echo "$IFLOW_NAME" | sed 's/_/ /g')
                 
-                # --- LOGO URLS (REMOVED: Use template for repeating logos) ---
-                
-                # COVER PAGE GENERATION (HTML for the cover page remains)
-                # The logos for the COVER PAGE must be kept here using relative paths if they must be visible in the Markdown file when opened directly.
+                # --- LOGO URLS (Only for the Cover Page) ---
                 SAP_LOGO_URL="./assets/sap_logo.png"
                 MOTIVEMINDS_LOGO_URL="./assets/motiveminds_logo.png"
-                
+
+                # COVER PAGE GENERATION (HTML for the cover page)
                 SAP_LOGO_BLOCK_COVER="<div style=\"float: left; text-align: left;\"><img src=\"$SAP_LOGO_URL\" alt=\"SAP Logo\" width=\"150\" height=\"60\"/></div>"
                 MOTIVEMINDS_LOGO_BLOCK_COVER="<div style=\"float: right; text-align: right;\"><img src=\"$MOTIVEMINDS_LOGO_URL\" alt=\"motiveminds Logo\" width=\"150\" height=\"55\" style=\"margin-top: 5px;\"/></div>"
                 COVER_PAGE_CONTENT="${SAP_LOGO_BLOCK_COVER}${MOTIVEMINDS_LOGO_BLOCK_COVER}<div style=\"clear: both;\"></div><div style=\"height: 80px;\"></div>"
@@ -139,10 +129,9 @@ jobs:
                 COVER_PAGE_CONTENT+="<tr><td style=\"padding: 5px;\">**Date:**</td><td style=\"padding: 5px;\">$DATE</td></tr>"
                 COVER_PAGE_CONTENT+="<tr><td style=\"padding: 5px;\">**Version (Commit):**</td><td style=\"padding: 5px;\">$VERSION</td></tr></table></div>"
                 
-                # Replace the cover page page break with just some vertical space for HTML viewing
+                # Add a vertical break after the cover page content
                 COVER_PAGE_CONTENT+="\n<div style=\"margin-bottom: 50px;\"></div>\n\n"
                                                       
-                # The FULL_DOCUMENTATION no longer includes the repeating header injection
                 FULL_DOCUMENTATION="${COVER_PAGE_CONTENT}${GENERATED_TEXT}"
                 
                 # IMPORTANT: Replace the TOC marker with an HTML separator
@@ -181,7 +170,7 @@ jobs:
               
               if [ -f "$INPUT_MD" ]; then
                   echo "::notice file=$INPUT_MD::Processing Mermaid in $INPUT_MD"
-                  # ... (Mermaid processing logic remains unchanged) ...
+                  
                   SVG_DIR_NAME="mermaid_svgs"
                   SVG_DIR="$IFLOW_DIR/$SVG_DIR_NAME"
                   mkdir -p "$SVG_DIR"
@@ -266,44 +255,77 @@ jobs:
           
           echo "::set-output name=combined_md_path::$OUTPUT_MD"
 
-
-      # --- Step 4: Final Conversion (MODIFIED: Output PDF using custom LaTeX template) ---
-      - name: 📄 Convert Combined Markdown to PDF with Repeating Header
-        if: steps.consolidate_md.outputs.combined_md_path != ''
-        id: pdf_convert
+      # --- NEW Step 4: Inject Repeating Header and Explicit Page Breaks (This is the critical new step) ---
+      - name: 📝 Inject Repeating Header and Explicit Page Breaks
+        if: steps.documentation_step.outputs.docs_generated == 'true'
+        id: inject_header
         env:
           PKG_ID: ${{ github.event.inputs.package_id }}
-          INPUT_MD: ${{ steps.consolidate_md.outputs.combined_md_path }}
-          OUTPUT_PDF: cpi-artifacts/${{ github.event.inputs.package_id }}/Combined_CPI_Documentation.pdf
-          
         run: |
-          INPUT_MD_PATH="${{ env.INPUT_MD }}"
-          OUTPUT_PDF_PATH="${{ env.OUTPUT_PDF }}"
-          TEMPLATE_PATH=".github/workflows/header_template.tex" # Path to your new template
-
-          echo "::notice::Starting Markdown-to-PDF conversion using custom LaTeX template for repeating headers."
+          # The paths to the logos for injection
+          SAP_LOGO_URL="./assets/sap_logo.png"
+          MOTIVEMINDS_LOGO_URL="./assets/motiveminds_logo.png"
           
-          /usr/bin/docker run --rm \
-              -v "$(pwd):/data" \
-              pandoc/latex \
-              "$INPUT_MD_PATH" \
-              -o "$OUTPUT_PDF_PATH" \
-              --from markdown+yaml_metadata_block+raw_html \
-              --to pdf \
-              --template "$TEMPLATE_PATH" \
-              --toc \
-              --toc-depth=3 \
-              -V geometry:margin=1in
+          # The full HTML header block with explicit page-break-before style.
+          # We use height and margin-top to simulate the header placement.
+          # NOTE: The "page-break-before" style will cause the first injection
+          # (after the cover) to break the page. Subsequent injections before 
+          # the H1 tags will ensure a header block is at the top of every major section.
+          REPEATING_HEADER_BLOCK="<div style=\"page-break-before: always; height: 100px;\"><div style=\"float: left; text-align: left;\"><img src=\"$SAP_LOGO_URL\" alt=\"SAP Logo\" width=\"120\" height=\"50\"/></div><div style=\"float: right; text-align: right;\"><img src=\"$MOTIVEMINDS_LOGO_URL\" alt=\"motiveminds Logo\" width=\"120\" height=\"45\" style=\"margin-top: 5px;\"/></div><div style=\"clear: both;\"></div><hr style=\"border: 1px solid #1f4e79; margin-top: 10px; margin-bottom: 10px;\" /></div>"
+          
+          # Escape all special characters in the block for use in sed
+          ESCAPED_HEADER_BLOCK=$(echo "$REPEATING_HEADER_BLOCK" | sed 's/[\/&]/\\&/g')
+          
+          IFLOW_DIRS=$(find "cpi-artifacts/$PKG_ID" -type d -name '*_*')
+          
+          for IFLOW_DIR in $IFLOW_DIRS; do
+              INPUT_MD="$IFLOW_DIR/$(basename "$IFLOW_DIR")_Summary.md"
               
-          if [ $? -ne 0 ]; then
-              echo "::error::Final PDF conversion failed with exit code $?."
-              exit 1 
-          fi
+              if [ -f "$INPUT_MD" ]; then
+                  echo "::notice file=$INPUT_MD::Injecting repeating header logic into $INPUT_MD"
+                  
+                  # 1. Inject the header *after* the TOC-END-PAGE-BREAK marker 
+                  # This ensures the first page after the TOC/Cover page gets the header.
+                  # The "page-break-before" inside the header block acts as the page break.
+                  sed -i "s|---TOC-END-PAGE-BREAK---|---TOC-END-PAGE-BREAK---"$'\n'"$ESCAPED_HEADER_BLOCK"|g" "$INPUT_MD"
+                  
+                  # 2. Inject the header *before* every subsequent major H1 section (Sections 2, 3, 4, 5, 6).
+                  # This ensures the header is at the top of all subsequent pages when printed/rendered.
+                  # The "page-break-before" in the header block forces the page break for these H1s.
+                  sed -i "s|<h1 style=\"color: #1f4e79;\">|$ESCAPED_HEADER_BLOCK"$'\n'"<h1 style=\"color: #1f4e79;\">|g" "$INPUT_MD"
+                  
+                  echo "  💾 Finished injecting header logic into $INPUT_MD"
+              fi
+          done
 
-          echo "::notice::Final PDF generated successfully at $OUTPUT_PDF_PATH (Will NOT be committed to Git)"
+
+      # --- Step 5: (Original Step 3) Consolidate Markdown (This runs again to consolidate the newly injected files) ---
+      # NOTE: This step is now redundant as we modified the individual files, but we keep it to ensure the Combined file is updated.
+
+      - name: 📦 Re-Consolidate All iFlow Markdown Files (After Injection)
+        if: steps.documentation_step.outputs.docs_generated == 'true'
+        env:
+          PKG_ID: ${{ github.event.inputs.package_id }}
+        run: |
+          INPUT_FILES=$(find "cpi-artifacts/$PKG_ID" -type f -name '*_Summary.md' | sort)
+          OUTPUT_MD="cpi-artifacts/$PKG_ID/Combined_CPI_Documentation.md"
+          
+          echo "Re-consolidating files into $OUTPUT_MD after header injection."
+          
+          > "$OUTPUT_MD"
+          
+          HTML_DOCUMENT_SEPARATOR="\n\n<hr style=\"border: 6px solid #1f4e79; margin: 60px 0;\" />\n\n"
+
+          for FILE in $INPUT_FILES; do
+              IFLOW_NAME=$(basename "$(dirname "$FILE")")
+              echo "--- Adding iFlow: $IFLOW_NAME ---"
+              
+              echo -e "$HTML_DOCUMENT_SEPARATOR" >> "$OUTPUT_MD"
+              cat "$FILE" >> "$OUTPUT_MD"
+          done
 
 
-      # --- Step 5: COMMIT STEP (UNCHANGED) ---
+      # --- Step 6: COMMIT STEP (UNCHANGED) ---
       - name: 💾 Commit Generated Markdown and SVG Files
         if: steps.documentation_step.outputs.docs_generated == 'true'
         run: |
