@@ -21,7 +21,7 @@ jobs:
           # jq is needed for JSON manipulation with the OpenAI API
           sudo apt-get update
           sudo apt-get install -y jq
-          # Ensure Docker is ready, as the PDF step uses a Docker image for Pandoc/Chromium
+          # Docker is pre-installed on GitHub runners, but this ensures dependencies are fresh.
 
       - name: Generate Individual iFlow Documentation via OpenAI API
         id: documentation_step
@@ -223,7 +223,7 @@ jobs:
           echo "docs_generated=$ALL_DOCS_GENERATED" >> $GITHUB_OUTPUT
 
 
-      # --- START NEW STEP FOR PDF GENERATION WITH REPEATING HEADER ---
+      # --- START CORRECTED STEP FOR PDF GENERATION WITH REPEATING HEADER ---
 
       - name: Generate PDF with Repeating Header
         if: steps.documentation_step.outputs.docs_generated == 'true'
@@ -236,28 +236,35 @@ jobs:
           IFLOW_ROOT_NAMES=$(find "cpi-artifacts/$PKG_ID" -type f \( -name 'iFlowContent.xml' -o -name '*.iflw' \) -print | sed "s|^cpi-artifacts/$PKG_ID/||" | cut -d/ -f1 | sort -u)
           
           # Define the repeating header HTML structure
+          # Use 'display: flex' for easy logo and text alignment
           REPEATING_HEADER="<div style='display: flex; justify-content: space-between; align-items: center; width: 100%; border-bottom: 1px solid #ddd; padding: 5px 0;'>"
           REPEATING_HEADER+="<img src='${{ env.SAP_LOGO_URL }}' alt='SAP Logo' style='height: 30px;'/>"
           REPEATING_HEADER+="<span style='font-size: 10px; color: #1f4e79; font-weight: bold;'>${{ env.DOC_TITLE }}</span>"
           REPEATING_HEADER+="<img src='${{ env.MOTIVEMINDS_LOGO_URL }}' alt='motiveminds Logo' style='height: 25px;'/>"
           REPEATING_HEADER+="</div>"
           
-          # Iterate through all generated Markdown files to convert them
+          # 1. Save the header HTML to a temporary file accessible to the Docker container
+          mkdir -p /tmp/pdf_config
+          echo "$REPEATING_HEADER" > /tmp/pdf_config/header.html
+          
+          # 2. Iterate through all generated Markdown files to convert them
           for IFLOW_NAME in $IFLOW_ROOT_NAMES; do
               INPUT_MD="cpi-artifacts/$PKG_ID/$IFLOW_NAME/${IFLOW_NAME}_Summary.md"
               OUTPUT_PDF="cpi-artifacts/$PKG_ID/$IFLOW_NAME/${IFLOW_NAME}_Summary.pdf"
               
               if [ -f "$INPUT_MD" ]; then
-                  echo "::notice file=$IFLOW_NAME::Starting PDF conversion for $IFLOW_NAME"
+                  echo "::notice file=$IFLOW_NAME::Starting PDF conversion for $IFLOW_NAME using mgood/doc-to-pdf."
                   
-                  # Use a Docker image for markdown-to-pdf conversion (based on Chromium/Puppeteer)
-                  # This tool supports header-html for repeating content on every page.
-                  # It maps the current directory (pwd) to the workspace inside the container.
-                  /usr/bin/docker run --rm -v "$(pwd):/github/workspace" \
-                      hymns-github/markdown-to-pdf:1.0.0 \
-                      --input "/github/workspace/$INPUT_MD" \
-                      --output "/github/workspace/$OUTPUT_PDF" \
-                      --header-html "$REPEATING_HEADER" \
+                  # Use the stable mgood/doc-to-pdf Docker image
+                  # -v "$(pwd):/app": Maps the current repository directory to /app inside the container
+                  # -v "/tmp/pdf_config:/pdf_config": Maps the temporary header file location
+                  /usr/bin/docker run --rm \
+                      -v "$(pwd):/app" \
+                      -v "/tmp/pdf_config:/pdf_config" \
+                      mgood/doc-to-pdf \
+                      --input "/app/$INPUT_MD" \
+                      --output "/app/$OUTPUT_PDF" \
+                      --header-html "/pdf_config/header.html" \
                       --pdf-display-header-footer \
                       --page-margin "0.8in 0.5in 0.8in 0.5in" \
                       --page-format "A4" 
@@ -268,7 +275,7 @@ jobs:
               fi
           done
 
-      # --- END NEW STEP FOR PDF GENERATION WITH REPEATING HEADER ---
+      # --- END CORRECTED STEP FOR PDF GENERATION WITH REPEATING HEADER ---
 
 
       - name: Commit All Generated Files (MD and PDF)
