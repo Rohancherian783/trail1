@@ -1,4 +1,4 @@
-name: 🤖 CPI Documentation Generation (MD -> DOCX with headers & Mermaid)
+name: 🤖 CPI Documentation Generation (MD → DOCX)
 
 on:
   workflow_dispatch:
@@ -15,61 +15,36 @@ jobs:
       contents: write
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+    # ---------------------------------------------------------
+    # CHECKOUT
+    # ---------------------------------------------------------
+    - name: Checkout repository
+      uses: actions/checkout@v4
 
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update -y
-          # jq for JSON, pandoc for md->docx, node & npm for mermaid-cli, python and pip
-          sudo apt-get install -y jq pandoc python3 python3-pip nodejs npm
+    # ---------------------------------------------------------
+    # INSTALL SYSTEM DEPENDENCIES
+    # ---------------------------------------------------------
+    - name: Install dependencies
+      run: |
+        sudo apt-get update -y
+        sudo apt-get install -y jq pandoc python3 python3-pip nodejs npm
+        sudo npm install -g @mermaid-js/mermaid-cli
+        python3 -m pip install --upgrade pip
+        python3 -m pip install python-docx requests
 
-      - name: Install npm & Python packages
-        run: |
-          # Install mermaid CLI globally
-          sudo npm install -g @mermaid-js/mermaid-cli
-          # Install python packages used by the converter script
-          python3 -m pip install --upgrade pip
-          python3 -m pip install python-docx requests
+    # ---------------------------------------------------------
+    # CREATE PYTHON SCRIPT SAFELY (NO YAML BREAKING)
+    # ---------------------------------------------------------
+    - name: Create md_to_docx.py converter script
+      run: |
+        mkdir -p .github/scripts
 
-      - name: Generate Individual iFlow Documentation via OpenAI API
-        id: documentation_step
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          PKG_ID: ${{ github.event.inputs.package_id }}
-          HEADING_COLOR: "#1f4e79"
-          # logo urls (from your repo)
-          SAP_LOGO_URL: "https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/sap_logo.png"
-          MOTIVEMINDS_LOGO_URL: "https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/motiveminds_logo.png"
-        run: |
-          set -euo pipefail
-
-          API_URL="https://api.openai.com/v1/chat/completions"
-          MODEL_NAME="gpt-4o-mini"
-          BASE_PKG_DIR="cpi-artifacts/${PKG_ID}"
-
-          if [ ! -d "${BASE_PKG_DIR}" ]; then
-            echo "::error::Package directory not found at: ${BASE_PKG_DIR}"
-            echo "docs_generated=false" >> $GITHUB_OUTPUT
-            exit 1
-          fi
-
-          # --- SYSTEM PROMPT (shortened reference style to avoid YAML parsing problems) ---
-          # (keeps the same strict structure you used before)
-          # We'll keep it as a safe heredoc file on the runner
-          cat > /tmp/system_prompt.txt <<'SYS'
-You are a senior SAP CPI Technical Architect. Your task is to analyze ALL provided code and configuration files from the SINGLE iFlow provided and synthesize them into ONE consolidated Markdown documentation report. You MUST adhere strictly to the hierarchical 6-point structure. Use the provided HTML heading color in generated HTML headings when requested. The first page must be Table of Contents with the special marker ---TOC-END-PAGE-BREAK--- to separate TOC from Section 1. Include Mermaid 'graph TD' blocks for Integration Architecture (section 2.1) when appropriate. Ensure numbered subsections and required content.
-SYS
-
-          # Create the Markdown->DOCX helper script (will convert mermaid blocks to PNG, run pandoc, then inject DOCX header images)
-          mkdir -p .github/scripts
-          cat > .github/scripts/md_to_docx.py <<'PY'
+        cat << 'EOF' > .github/scripts/md_to_docx.py
 #!/usr/bin/env python3
-import sys, os, re, subprocess, tempfile, requests
+import sys, os, re, subprocess, requests
 from pathlib import Path
 from docx import Document
 from docx.shared import Inches
-from docx.enum.section import WD_SECTION
 
 def download(url, dest):
     r = requests.get(url, timeout=30)
@@ -77,212 +52,159 @@ def download(url, dest):
     with open(dest, "wb") as f:
         f.write(r.content)
 
-def convert_mermaid_blocks(md_path):
-    """
-    Finds mermaid code blocks in the md file, writes .mmd files, converts each to PNG (using mmdc),
-    and replaces the code block in the markdown with an image reference to the generated PNG.
-    Returns path to modified markdown file (may overwrite original).
-    """
-    text = md_path.read_text(encoding="utf-8")
+def convert_mermaid(md_path):
+    text = md_path.read_text()
     pattern = re.compile(r"```mermaid\s*(.*?)```", re.DOTALL)
-    matches = list(pattern.finditer(text))
+    matches = pattern.findall(text)
     if not matches:
         return md_path
 
-    out_dir = md_path.parent / (md_path.stem + "_assets")
-    out_dir.mkdir(parents=True, exist_ok=True)
+    assets_dir = md_path.parent / (md_path.stem + "_assets")
+    assets_dir.mkdir(exist_ok=True)
 
-    # For multiple diagrams, create enumerated outputs
-    new_text = text
-    for i, m in enumerate(matches, start=1):
-        mermaid_code = m.group(1).strip()
-        mmd_file = out_dir / f"diagram_{i}.mmd"
-        png_file = out_dir / f"diagram_{i}.png"
-        mmd_file.write_text(mermaid_code, encoding="utf-8")
+    for idx, diagram in enumerate(matches, start=1):
+        mmd = assets_dir / f"diagram_{idx}.mmd"
+        png = assets_dir / f"diagram_{idx}.png"
+        mmd.write_text(diagram.strip())
+        subprocess.run(["mmdc", "-i", str(mmd), "-o", str(png)], check=True)
+        text = text.replace(f"```mermaid\n{diagram}```", f"![Diagram]({png.name})")
 
-        # Use mmdc to convert .mmd -> .png
-        cmd = ["mmdc", "-i", str(mmd_file), "-o", str(png_file)]
-        subprocess.run(cmd, check=True)
-
-        # replace the mermaid code block (first occurrence) with image markdown
-        # use relative path so pandoc will embed it
-        image_markdown = f"![Diagram]({png_file.name})\n\n"
-        # Replace just the first occurrence to keep ordering
-        new_text = new_text.replace(m.group(0), image_markdown, 1)
-
-    # Save new markdown into same file (pandoc will pick up assets in same dir)
-    md_path.write_text(new_text, encoding="utf-8")
+    md_path.write_text(text)
     return md_path
 
-def markdown_to_docx(md_path, docx_path):
-    # Use pandoc to convert md -> docx. Set resource path to include assets dir.
-    assets_dir = md_path.parent / (md_path.stem + "_assets")
-    # If assets exist, set --resource-path to that folder
-    cmd = ["pandoc", str(md_path), "-o", str(docx_path)]
-    if assets_dir.exists():
-        cmd = ["pandoc", str(md_path), "--resource-path", str(assets_dir), "-o", str(docx_path)]
-    subprocess.run(cmd, check=True)
+def md_to_docx(md_path, docx_path, sap_logo, mm_logo):
+    convert_mermaid(md_path)
 
-def add_header_logos(docx_path, sap_logo_file, motives_logo_file):
-    doc = Document(str(docx_path))
-    # Ensure header exists for the first section
+    subprocess.run(["pandoc", str(md_path), "-o", str(docx_path)], check=True)
+
+    doc = Document(docx_path)
     section = doc.sections[0]
     header = section.header
     header.is_linked_to_previous = False
 
-    # Create a table with two columns in the header for left and right logo placement
     table = header.add_table(rows=1, cols=2)
-    table.autofit = False
-    # left cell: sap logo
-    left_cell = table.rows[0].cells[0]
-    p_left = left_cell.paragraphs[0]
-    run_left = p_left.add_run()
-    run_left.add_picture(str(sap_logo_file), width=Inches(1.5))
-    # right cell: motive minds logo aligned right
-    right_cell = table.rows[0].cells[1]
-    p_right = right_cell.paragraphs[0]
-    p_right.alignment = 2  # WD_ALIGN_PARAGRAPH.RIGHT -> 2
-    run_right = p_right.add_run()
-    run_right.add_picture(str(motives_logo_file), width=Inches(1.5))
+    table.autofit = True
 
-    # Save back
-    doc.save(str(docx_path))
+    left = table.rows[0].cells[0].paragraphs[0].add_run()
+    left.add_picture(sap_logo, width=Inches(1.5))
 
-def main():
-    if len(sys.argv) < 6:
-        print("Usage: md_to_docx.py <md_path> <docx_path> <sap_logo_url> <motiveminds_logo_url> <workdir>")
-        sys.exit(2)
+    right_p = table.rows[0].cells[1].paragraphs[0]
+    right_p.alignment = 2
+    right = right_p.add_run()
+    right.add_picture(mm_logo, width=Inches(1.5))
 
-    md_path = Path(sys.argv[1]).resolve()
-    docx_path = Path(sys.argv[2]).resolve()
-    sap_logo_url = sys.argv[3]
-    motives_logo_url = sys.argv[4]
-    workdir = Path(sys.argv[5]).resolve()
-    workdir.mkdir(parents=True, exist_ok=True)
-
-    # Step 1: convert mermaid blocks to PNGs and update md
-    convert_mermaid_blocks(md_path)
-
-    # Step 2: Download logos to workdir
-    sap_logo_file = workdir / "sap_logo.png"
-    motives_logo_file = workdir / "motiveminds_logo.png"
-    download(sap_logo_url, sap_logo_file)
-    download(motives_logo_url, motives_logo_file)
-
-    # Step 3: Convert md -> docx (pandoc)
-    markdown_to_docx(md_path, docx_path)
-
-    # Step 4: Add header logos into docx (applies to all pages)
-    add_header_logos(docx_path, sap_logo_file, motives_logo_file)
+    doc.save(docx_path)
 
 if __name__ == "__main__":
-    main()
-PY
-          chmod +x .github/scripts/md_to_docx.py
+    md = Path(sys.argv[1])
+    docx = Path(sys.argv[2])
+    sap = sys.argv[3]
+    mm = sys.argv[4]
+    md_to_docx(md, docx, sap, mm)
+EOF
 
-          # --- Find iFlows and call OpenAI for each (this preserves your original generation logic) ---
-          FULL_IFLOW_PATHS=$(find "$BASE_PKG_DIR" -type f \( -name 'iFlowContent.xml' -o -name '*.iflw' \) -print || true)
+        chmod +x .github/scripts/md_to_docx.py
 
-          if [ -z "$FULL_IFLOW_PATHS" ]; then
-            echo "::warning::No iFlows found (no 'iFlowContent.xml' or '*.iflw') in package '$PKG_ID'. Skipping documentation."
-            echo "docs_generated=false" >> $GITHUB_OUTPUT
-            exit 0
-          fi
+    # ---------------------------------------------------------
+    # MAIN DOCUMENT GENERATION
+    # ---------------------------------------------------------
+    - name: Generate documentation (OpenAI + MD → DOCX)
+      id: documentation_step
+      env:
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        PKG_ID: ${{ github.event.inputs.package_id }}
+        SAP_LOGO_URL: "https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/sap_logo.png"
+        MM_LOGO_URL: "https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/motiveminds_logo.png"
+      run: |
+        set -euo pipefail
 
-          IFLOW_ROOT_NAMES=$(echo "$FULL_IFLOW_PATHS" | sed "s|^$BASE_PKG_DIR/||" | cut -d/ -f1 | sort -u)
-          IFLOW_FOLDERS=$(echo "$IFLOW_ROOT_NAMES" | xargs -I {} echo "$BASE_PKG_DIR/{}")
-          ALL_DOCS_GENERATED=false
+        API_URL="https://api.openai.com/v1/chat/completions"
+        MODEL="gpt-4o-mini"
+        BASE="cpi-artifacts/${PKG_ID}"
 
-          for IFLOW_DIR in $IFLOW_FOLDERS; do
-            IFLOW_NAME=$(basename "$IFLOW_DIR")
-            OUTPUT_FILE="$IFLOW_DIR/${IFLOW_NAME}_Summary.md"
+        if [ ! -d "$BASE" ]; then
+          echo "::error::Package not found"
+          echo "docs_generated=false" >> $GITHUB_OUTPUT
+          exit 1
+        fi
 
-            echo "=================================================="
-            echo "➡ Processing iFlow: $IFLOW_NAME (in $IFLOW_DIR)"
+        # SYSTEM PROMPT
+        cat << 'EOF' > /tmp/system_prompt.txt
+You are a senior SAP CPI Technical Architect.
+Generate a structured Markdown document containing:
+- A Table of Contents
+- 6 structured sections
+- Mermaid graph TD diagram in section 2.1
+EOF
 
-            # Consolidate artifacts (same as your logic)
-            FULL_ARTIFACT_CONTENT=""
-            FILES_TO_ANALYZE=$(find "$IFLOW_DIR" -type f \( -name 'iFlowContent.xml' -o -name '*.groovy' -o -name '*.xslt' -o -name '*.iflw' \) -print || true)
+        IFlows=$(find "$BASE" -type f -name "*iFlowContent.xml" | sed "s|$BASE/||" | cut -d/ -f1 | sort -u)
 
-            if [ -z "$FILES_TO_ANALYZE" ]; then
-                echo "  ⚠️ No supported artifacts found recursively in iFlow directory: $IFLOW_DIR. Skipping."
-                continue
-            fi
+        ALL=false
 
-            for INPUT_FILE in $FILES_TO_ANALYZE; do
-              FILE_CONTENT=$(sed -e 's/\r$//' "$INPUT_FILE")
-              FULL_ARTIFACT_CONTENT+="\n\n--- START ARTIFACT: $INPUT_FILE ---\n"
-              FULL_ARTIFACT_CONTENT+="$FILE_CONTENT"
-              FULL_ARTIFACT_CONTENT+="\n--- END ARTIFACT: $INPUT_FILE ---\n"
-            done
+        for flow in $IFlows; do
+          DIR="$BASE/$flow"
+          MD="$DIR/${flow}_Summary.md"
+          DOCX="$DIR/${flow}_Summary.docx"
 
-            # Build user query (we pass the system prompt file and the query)
-            USER_QUERY="Synthesize a single, consolidated technical report following the 6 mandatory hierarchical sections and all sub-sections from the set of artifacts provided below, which belong ONLY to the iFlow '$IFLOW_NAME'. 
+          echo "Processing $flow ..."
 
-\`\`\`text
-$FULL_ARTIFACT_CONTENT
-\`\`\`"
-
-            # Build payload using jq
-            PAYLOAD=$(jq -n \
-              --arg system "$(cat /tmp/system_prompt.txt)" \
-              --arg query "$USER_QUERY" \
-              --arg model "$MODEL_NAME" \
-              '{ model: $model, messages: [ {role: "system", content: $system}, {role: "user", content: $query} ], temperature: 0.1 }')
-
-            # Call OpenAI API
-            API_RESPONSE=$(curl -s -X POST "$API_URL" \
-              -H "Content-Type: application/json" \
-              -H "Authorization: Bearer $OPENAI_API_KEY" \
-              -d "$PAYLOAD")
-
-            GENERATED_TEXT=$(echo "$API_RESPONSE" | jq -r ".choices[0].message.content // empty")
-
-            if [ -n "$GENERATED_TEXT" ]; then
-              echo "  ✅ Documentation generated successfully."
-              # Save markdown
-              echo -e "$GENERATED_TEXT" > "$OUTPUT_FILE"
-              echo "  💾 Saved Markdown documentation to $OUTPUT_FILE"
-
-              # Convert MD -> DOCX with mermaid diagrams and add header logos
-              WORKDIR="$(dirname "$OUTPUT_FILE")/docx_workdir"
-              mkdir -p "$WORKDIR"
-
-              DOCX_OUTPUT="${OUTPUT_FILE%.md}.docx"
-
-              echo "  🔁 Converting Mermaid blocks (if any) and generating DOCX: $DOCX_OUTPUT"
-              python3 .github/scripts/md_to_docx.py "$OUTPUT_FILE" "$DOCX_OUTPUT" "${SAP_LOGO_URL}" "${MOTIVEMINDS_LOGO_URL}" "$WORKDIR"
-
-              if [ -f "$DOCX_OUTPUT" ]; then
-                echo "  ✅ DOCX generated at $DOCX_OUTPUT"
-                ALL_DOCS_GENERATED=true
-              else
-                echo "::error::DOCX conversion failed for $OUTPUT_FILE"
-              fi
-
-            else
-              ERROR_MSG=$(echo "$API_RESPONSE" | jq -r ".error.message // \"Unknown error\"")
-              echo "::error::Failed to generate documentation for iFlow: $IFLOW_NAME : $ERROR_MSG"
-            fi
-
-            echo "=================================================="
+          CONTENT=""
+          for f in $(find "$DIR" -type f \( -name "*.xml" -o -name "*.groovy" -o -name "*.xslt" -o -name "*.iflw" \)); do
+            CONTENT="$CONTENT\n--- FILE: $f ---\n$(cat "$f")\n"
           done
 
-          echo "docs_generated=$ALL_DOCS_GENERATED" >> $GITHUB_OUTPUT
+          QUERY="Generate a full documentation:\n\`\`\`\n$CONTENT\n\`\`\`"
 
-      - name: Commit All Generated iFlow Documentation
-        if: steps.documentation_step.outputs.docs_generated == 'true'
-        run: |
-          git config user.name "github-actions"
-          git config user.email "actions@github.com"
-          PKG_ID="${{ github.event.inputs.package_id }}"
-          OUTPUT_PATH="cpi-artifacts/$PKG_ID/**/*_Summary.*"
-          git add $OUTPUT_PATH || true
-          if git diff --cached --quiet; then
-            echo "No meaningful changes detected in the generated documentation files. Skipping commit."
-          else
-            git commit -m "🤖 DOCS: Generated/Updated iFlow summaries (MD + DOCX) for package: $PKG_ID"
-            git push
-            echo "✅ All iFlow documentation committed and pushed to repository."
+          PAYLOAD=$(jq -n \
+            --arg sys "$(cat /tmp/system_prompt.txt)" \
+            --arg user "$QUERY" \
+            --arg model "$MODEL" \
+            '{model: $model, messages:[{role:"system",content:$sys},{role:"user",content:$user}] }')
+
+          RES=$(curl -s -X POST "$API_URL" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer $OPENAI_API_KEY" \
+            -d "$PAYLOAD")
+
+          TEXT=$(echo "$RES" | jq -r '.choices[0].message.content // empty')
+
+          if [ -z "$TEXT" ]; then
+            echo "::error::OpenAI failed"
+            continue
           fi
+
+          echo -e "$TEXT" > "$MD"
+          echo "Written $MD"
+
+          # Download logos
+          wget -q "$SAP_LOGO_URL" -O "$DIR/sap.png"
+          wget -q "$MM_LOGO_URL" -O "$DIR/mm.png"
+
+          python3 .github/scripts/md_to_docx.py "$MD" "$DOCX" "$DIR/sap.png" "$DIR/mm.png"
+
+          echo "Generated DOCX: $DOCX"
+          ALL=true
+        done
+
+        echo "docs_generated=$ALL" >> $GITHUB_OUTPUT
+
+    # ---------------------------------------------------------
+    # COMMIT RESULTS
+    # ---------------------------------------------------------
+    - name: Commit generated docs
+      if: steps.documentation_step.outputs.docs_generated == 'true'
+      run: |
+        git config user.email "actions@github.com"
+        git config user.name "GitHub Actions"
+
+        git add cpi-artifacts/**/*_Summary.md || true
+        git add cpi-artifacts/**/*_Summary.docx || true
+
+        if git diff --cached --quiet; then
+          echo "No changes"
+        else
+          git commit -m "🤖 Auto-generated MD + DOCX for CPI package"
+          git push
+        fi
+
 
