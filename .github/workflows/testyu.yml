@@ -1,10 +1,10 @@
-name: 🤖 CPI Documentation Generation (MD -> DOCX)
+name: 🤖 CPI Documentation Generation (MD → DOCX)
 
 on:
   workflow_dispatch:
     inputs:
       package_id:
-        description: "The ID of the CPI Integration Package (e.g., 'PDFcoveter')."
+        description: "CPI Package ID (folder under cpi-artifacts/)"
         required: true
         type: string
 
@@ -15,21 +15,33 @@ jobs:
       contents: write
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+    # ------------------------------------------------------------
+    # Checkout repository
+    # ------------------------------------------------------------
+    - name: Checkout repository
+      uses: actions/checkout@v4
 
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update -y
-          sudo apt-get install -y jq pandoc python3 python3-pip nodejs npm wget
-          sudo npm install -g @mermaid-js/mermaid-cli
-          python3 -m pip install --upgrade pip
-          python3 -m pip install python-docx requests
 
-      - name: Create md_to_docx.py
-        run: |
-          mkdir -p .github/scripts
-          cat <<'PY' > .github/scripts/md_to_docx.py
+    # ------------------------------------------------------------
+    # Install dependencies (pandoc, mermaid-cli, python-docx)
+    # ------------------------------------------------------------
+    - name: Install dependencies
+      run: |
+        sudo apt-get update -y
+        sudo apt-get install -y jq pandoc python3 python3-pip nodejs npm wget
+        sudo npm install -g @mermaid-js/mermaid-cli
+        python3 -m pip install --upgrade pip
+        python3 -m pip install python-docx requests
+
+
+    # ------------------------------------------------------------
+    # Create Python converter script (YAML-safe heredoc)
+    # ------------------------------------------------------------
+    - name: Create md_to_docx.py
+      run: |
+        mkdir -p .github/scripts
+
+        cat << 'PY' > .github/scripts/md_to_docx.py
 #!/usr/bin/env python3
 import sys
 import re
@@ -40,182 +52,181 @@ from docx import Document
 from docx.shared import Inches
 
 def download(url, dest):
-    r = requests.get(url, timeout=30)
+    r = requests.get(url, timeout=20)
     r.raise_for_status()
     with open(dest, "wb") as f:
         f.write(r.content)
 
 def convert_mermaid(md_path):
-    text = md_path.read_text(encoding="utf-8")
+    content = md_path.read_text(encoding="utf-8")
     pattern = re.compile(r"```mermaid\s*(.*?)```", re.DOTALL)
-    matches = list(pattern.finditer(text))
+    matches = pattern.findall(content)
     if not matches:
         return
-    assets_dir = md_path.parent / (md_path.stem + "_assets")
-    assets_dir.mkdir(parents=True, exist_ok=True)
-    new_text = text
-    for i, m in enumerate(matches, start=1):
-        mermaid_code = m.group(1).strip()
-        mmd_file = assets_dir / f"diagram_{i}.mmd"
-        png_file = assets_dir / f"diagram_{i}.png"
-        mmd_file.write_text(mermaid_code, encoding="utf-8")
-        subprocess.run(["mmdc", "-i", str(mmd_file), "-o", str(png_file)], check=True)
-        image_markdown = f"![Diagram]({png_file.name})\n\n"
-        new_text = new_text.replace(m.group(0), image_markdown, 1)
-    md_path.write_text(new_text, encoding="utf-8")
 
-def md_to_docx(md_path, docx_path, sap_logo_path, mm_logo_path):
-    # Convert mermaid blocks (into assets) and replace with image refs
+    assets = md_path.parent / (md_path.stem + "_assets")
+    assets.mkdir(exist_ok=True)
+
+    for i, code in enumerate(matches, start=1):
+        mmd = assets / f"diagram_{i}.mmd"
+        png = assets / f"diagram_{i}.png"
+        mmd.write_text(code.strip(), encoding="utf-8")
+        subprocess.run(["mmdc", "-i", str(mmd), "-o", str(png)], check=True)
+        content = content.replace(f"```mermaid\n{code}```", f"![Diagram]({png.name})")
+
+    md_path.write_text(content, encoding="utf-8")
+
+def md_to_docx(md_path, docx_path, sap_url, mm_url):
     convert_mermaid(md_path)
 
-    # Use pandoc to convert markdown to docx
-    cmd = ["pandoc", str(md_path), "-o", str(docx_path)]
-    # If assets folder exists, use resource-path to help pandoc locate images
-    assets_dir = md_path.parent / (md_path.stem + "_assets")
-    if assets_dir.exists():
-        cmd = ["pandoc", str(md_path), "--resource-path", str(assets_dir), "-o", str(docx_path)]
-    subprocess.run(cmd, check=True)
+    # Download logos
+    sap_file = md_path.parent / "sap_logo.png"
+    mm_file = md_path.parent / "mm_logo.png"
+    download(sap_url, sap_file)
+    download(mm_url, mm_file)
 
-    # Insert header logos using python-docx (applies to all pages)
+    # Convert md→docx with pandoc
+    subprocess.run(["pandoc", str(md_path), "-o", str(docx_path)], check=True)
+
+    # Add headers with logos
     doc = Document(str(docx_path))
     section = doc.sections[0]
     header = section.header
-    # Create simple table with two cells for logos
     table = header.add_table(rows=1, cols=2)
-    # left logo
+
     left_run = table.rows[0].cells[0].paragraphs[0].add_run()
-    left_run.add_picture(str(sap_logo_path), width=Inches(1.5))
-    # right logo, align right
-    right_cell = table.rows[0].cells[1]
-    para = right_cell.paragraphs[0]
+    left_run.add_picture(str(sap_file), width=Inches(1.5))
+
+    right_para = table.rows[0].cells[1].paragraphs[0]
     try:
         from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
-        para.alignment = WD_PARAGRAPH_ALIGNMENT.RIGHT
-    except Exception:
+        right_para.alignment = WD_PARAGRAPH_ALIGNMENT.RIGHT
+    except:
         pass
-    right_run = para.add_run()
-    right_run.add_picture(str(mm_logo_path), width=Inches(1.5))
+    right_run = right_para.add_run()
+    right_run.add_picture(str(mm_file), width=Inches(1.5))
 
     doc.save(str(docx_path))
 
 if __name__ == "__main__":
-    if len(sys.argv) != 5:
-        print("Usage: md_to_docx.py <md_path> <docx_path> <sap_logo_url> <mm_logo_url>")
-        sys.exit(2)
-    md = Path(sys.argv[1])
-    docx = Path(sys.argv[2])
-    sap_url = sys.argv[3]
-    mm_url = sys.argv[4]
-    workdir = md.parent
-    sap_file = workdir / "sap_logo.png"
-    mm_file = workdir / "mm_logo.png"
-    download(sap_url, sap_file)
-    download(mm_url, mm_file)
-    md_to_docx(md, docx, sap_file, mm_file)
+    md = Path(sys.argv[1]).resolve()
+    docx = Path(sys.argv[2]).resolve()
+    sap = sys.argv[3]
+    mm = sys.argv[4]
+    md_to_docx(md, docx, sap, mm)
 PY
-          chmod +x .github/scripts/md_to_docx.py
 
-      - name: Generate Markdown and convert to DOCX
-        id: documentation_step
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          PKG_ID: ${{ github.event.inputs.package_id }}
-          SAP_LOGO_URL: "https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/sap_logo.png"
-          MM_LOGO_URL: "https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/motiveminds_logo.png"
-        run: |
-          set -euo pipefail
+        chmod +x .github/scripts/md_to_docx.py
 
-          API_URL="https://api.openai.com/v1/chat/completions"
-          MODEL="gpt-4o-mini"
-          BASE_DIR="cpi-artifacts/${PKG_ID}"
 
-          if [ ! -d "${BASE_DIR}" ]; then
-            echo "::error::Package directory not found: ${BASE_DIR}"
-            echo "docs_generated=false" >> $GITHUB_OUTPUT
-            exit 1
-          fi
+    # ------------------------------------------------------------
+    # Generate Markdown using OpenAI, then convert to DOCX
+    # ------------------------------------------------------------
+    - name: Generate Documentation
+      id: docs
+      env:
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        PKG: ${{ github.event.inputs.package_id }}
+        SAP_LOGO: "https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/sap_logo.png"
+        MM_LOGO: "https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/motiveminds_logo.png"
+      run: |
+        set -euo pipefail
 
-          # minimal system prompt saved to file to avoid YAML parsing issues
-          cat <<'PROMPT' > /tmp/system_prompt.txt
-You are a senior SAP CPI Technical Architect. Generate a structured Markdown document with:
-- a Table of Contents (use marker ---TOC-END-PAGE-BREAK--- to separate TOC and Section 1)
-- 6 main sections with subsections
-- include Mermaid 'graph TD' blocks for section 2.1 where relevant
-PROMPT
+        BASE="cpi-artifacts/${PKG}"
+        API="https://api.openai.com/v1/chat/completions"
+        MODEL="gpt-4o-mini"
 
-          ILOWS=$(find "${BASE_DIR}" -maxdepth 2 -type f -name "iFlowContent.xml" -print || true)
-          if [ -z "${ILOWS}" ]; then
-            # fallback: find any iFlow or iflw file
-            ILOWS=$(find "${BASE_DIR}" -type f \( -name "*.iflw" -o -name "iFlowContent.xml" \) -print || true)
-          fi
+        if [ ! -d "$BASE" ]; then
+          echo "::error::Package not found: $BASE"
+          echo "docs_generated=false" >> $GITHUB_OUTPUT
+          exit 1
+        fi
 
-          # Get unique top-level iFlow folders
-          IFLOW_FOLDERS=$(echo "${ILOWS}" | sed "s|${BASE_DIR}/||" | cut -d/ -f1 | sort -u | xargs -I {} echo "${BASE_DIR}/{}")
+        # System prompt saved safely
+        cat << 'EOF' > /tmp/system_prompt.txt
+Generate structured CPI technical documentation in Markdown.
+Include:
+- Table of Contents
+- Sectioned technical documentation
+- Mermaid diagrams in section 2.1 when applicable
+EOF
 
-          ANY=false
+        # Identify iFlow folders
+        IFS=$'\n'
+        IFLOWS=$(find "$BASE" -maxdepth 2 -type f -name "iFlowContent.xml" | sed "s|$BASE/||" | cut -d/ -f1 | sort -u)
 
-          for IFLOW_DIR in ${IFLOW_FOLDERS}; do
-            IFLOW_NAME=$(basename "${IFLOW_DIR}")
-            MD_FILE="${IFLOW_DIR}/${IFLOW_NAME}_Summary.md"
-            DOCX_FILE="${IFLOW_DIR}/${IFLOW_NAME}_Summary.docx"
+        ANY=false
 
-            echo "Processing iFlow: ${IFLOW_NAME}"
+        for F in $IFLOWS; do
+          DIR="$BASE/$F"
+          MD="$DIR/${F}_Summary.md"
+          DOCX="$DIR/${F}_Summary.docx"
 
-            # Aggregate artifacts
-            FULL_CONTENT=""
-            for f in $(find "${IFLOW_DIR}" -type f \( -name "iFlowContent.xml" -o -name "*.iflw" -o -name "*.groovy" -o -name "*.xslt" \) -print || true); do
-              FULL_CONTENT="${FULL_CONTENT}\n\n--- START ARTIFACT: ${f} ---\n$(sed -e 's/\r$//' "${f}")\n--- END ARTIFACT: ${f} ---\n"
-            done
+          echo "Processing iFlow: $F"
 
-            USER_QUERY="Synthesize a single consolidated Markdown documentation for the iFlow '${IFLOW_NAME}'. Include an HTML-styled TOC with the marker ---TOC-END-PAGE-BREAK---. Provide Mermaid graph blocks where applicable.
-
-\`\`\`text
-${FULL_CONTENT}
-\`\`\`"
-
-            PAYLOAD=$(jq -n --arg sys "$(cat /tmp/system_prompt.txt)" --arg user "$USER_QUERY" --arg model "$MODEL" '{model:$model, messages:[{role:"system",content:$sys},{role:"user",content:$user}], temperature:0.1}')
-
-            RES=$(curl -s -X POST "${API_URL}" -H "Content-Type: application/json" -H "Authorization: Bearer ${OPENAI_API_KEY}" -d "${PAYLOAD}")
-
-            GENERATED=$(echo "${RES}" | jq -r '.choices[0].message.content // empty')
-
-            if [ -z "${GENERATED}" ]; then
-              echo "::warning::No content generated for ${IFLOW_NAME}"
-              continue
-            fi
-
-            # Save markdown
-            echo -e "${GENERATED}" > "${MD_FILE}"
-            echo "Saved markdown: ${MD_FILE}"
-
-            # Convert to DOCX (script downloads logos itself)
-            python3 .github/scripts/md_to_docx.py "${MD_FILE}" "${DOCX_FILE}" "${SAP_LOGO_URL}" "${MM_LOGO_URL}"
-
-            if [ -f "${DOCX_FILE}" ]; then
-              echo "Generated DOCX: ${DOCX_FILE}"
-              ANY=true
-            else
-              echo "::error::DOCX not found for ${IFLOW_NAME}"
-            fi
+          CONTENT=""
+          for file in $(find "$DIR" -type f \( -name "*.xml" -o -name "*.groovy" -o -name "*.xslt" -o -name "*.iflw" \)); do
+            CONTENT="$CONTENT\n\n--- FILE: $file ---\n$(cat "$file")\n"
           done
 
-          echo "docs_generated=${ANY}" >> $GITHUB_OUTPUT
+          USER_QUERY="Create CPI documentation for iFlow: ${F}.
+\`\`\`text
+${CONTENT}
+\`\`\`"
 
-      - name: Commit generated files
-        if: steps.documentation_step.outputs.docs_generated == 'true'
-        run: |
-          git config user.name "github-actions"
-          git config user.email "actions@github.com"
+          # Build payload
+          PAYLOAD=$(jq -n \
+            --arg sys "$(cat /tmp/system_prompt.txt)" \
+            --arg usr "$USER_QUERY" \
+            --arg model "$MODEL" \
+            '{model:$model, messages:[{role:"system",content:$sys},{role:"user",content:$usr}]}' )
 
-          git add cpi-artifacts/**/*_Summary.md || true
-          git add cpi-artifacts/**/*_Summary.docx || true
+          # Call OpenAI
+          RES=$(curl -s -X POST "$API" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer $OPENAI_API_KEY" \
+            -d "$PAYLOAD")
 
-          if git diff --cached --quiet; then
-            echo "No changes to commit."
-          else
-            git commit -m "🤖 Auto-generated docs (MD + DOCX)"
-            git push
+          TEXT=$(echo "$RES" | jq -r '.choices[0].message.content // empty')
+
+          if [ -z "$TEXT" ]; then
+            echo "::warning::OpenAI returned no text for $F"
+            continue
           fi
+
+          echo -e "$TEXT" > "$MD"
+          echo "Saved MD → $MD"
+
+          # Convert to DOCX
+          python3 .github/scripts/md_to_docx.py "$MD" "$DOCX" "$SAP_LOGO" "$MM_LOGO"
+
+          if [ -f "$DOCX" ]; then
+            echo "Created DOCX → $DOCX"
+            ANY=true
+          fi
+        done
+
+        echo "docs_generated=$ANY" >> $GITHUB_OUTPUT
+
+
+    # ------------------------------------------------------------
+    # Commit MD + DOCX
+    # ------------------------------------------------------------
+    - name: Commit generated files
+      if: steps.docs.outputs.docs_generated == 'true'
+      run: |
+        git config user.name "github-actions"
+        git config user.email "actions@github.com"
+
+        git add cpi-artifacts/**/*_Summary.md || true
+        git add cpi-artifacts/**/*_Summary.docx || true
+
+        if git diff --cached --quiet; then
+          echo "No new changes to commit."
+        else
+          git commit -m "🤖 Auto-generated CPI documentation (MD + DOCX)"
+          git push
+        fi
 
 
 
