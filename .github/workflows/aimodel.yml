@@ -128,22 +128,21 @@ jobs:
                 # --- END LOGO SETUP ---
 
                 # 1. SAP Logo Block Definition (Used on Left Side)
-                # FIX: Quoted
                 SAP_LOGO_BLOCK="<div style=\"float: left; text-align: left;\"><img src=\"$SAP_LOGO_URL\" alt=\"SAP Logo\" width=\"150\" height=\"60\"/></div>"
                 
                 # 2. BASE HEADER BLOCK DEFINITION (Combined logos for all pages)
-                # FIX: Quoted
                 BASE_LOGO_HEADER="${SAP_LOGO_BLOCK}<div style=\"float: right; text-align: right;\"><img src=\"$MOTIVEMINDS_LOGO_URL\" alt=\"motiveminds Logo\" width=\"150\" height=\"55\" style=\"margin-top: 5px;\"/></div><div style=\"clear: both;\"></div>"
                 
                 # 4. COVER PAGE CONTENT (Page 1) - Uses BASE_LOGO_HEADER at the top
-                # FIX: Quoted. Line by line additions are implicitly quoted.
-                COVER_PAGE_CONTENT="${BASE_LOGO_HEADER}\n" # Logos on Page 1
-                COVER_PAGE_CONTENT+="<div style=\"height: 80px;\"></div>"
-                COVER_PAGE_CONTENT+="<h1 style=\"color: ${{ env.HEADING_COLOR }}; font-size: 3em; text-align: center; margin-top: 5px; margin-bottom: 5px;\">$CLEAN_IFLOW_NAME</h1>"
-                COVER_PAGE_CONTENT+="<h2 style=\"color: ${{ env.HEADING_COLOR }}; font-size: 1.5em; text-align: center; margin-top: 5px; margin-bottom: 0px;\">SAP CPI Technical Specification Document</h2>"
-                COVER_PAGE_CONTENT+="<div style=\"height: 100px;\"></div>"
+                # FIX: We enclose the initial assignment in double quotes.
+                COVER_PAGE_CONTENT="${BASE_LOGO_HEADER}\n" 
+                
+                # FIX: We ensure all multi-line appends are quoted to prevent command injection issues.
+                COVER_PAGE_CONTENT+="<div style=\"height: 80px;\"></div>\n"
+                COVER_PAGE_CONTENT+="<h1 style=\"color: ${{ env.HEADING_COLOR }}; font-size: 3em; text-align: center; margin-top: 5px; margin-bottom: 5px;\">$CLEAN_IFLOW_NAME</h1>\n"
+                COVER_PAGE_CONTENT+="<h2 style=\"color: ${{ env.HEADING_COLOR }}; font-size: 1.5em; text-align: center; margin-top: 5px; margin-bottom: 0px;\">SAP CPI Technical Specification Document</h2>\n"
+                COVER_PAGE_CONTENT+="<div style=\"height: 100px;\"></div>\n"
                 COVER_PAGE_CONTENT+="<div style=\"width: 100%; text-align: center;\">\n"
-                # FIX 1: Replace Markdown bold (**) with HTML strong (<strong>) inside the table to prevent * from appearing.
                 COVER_PAGE_CONTENT+="<table border=\"1\" style=\"width: 400px; border-collapse: collapse; border-color: black; margin: 0 auto; text-align: left;\">\n"
                 COVER_PAGE_CONTENT+="  <tr><td style=\"width: 30%; padding: 5px;\"><strong>Author:</strong></td><td style=\"padding: 5px;\">$AUTHOR</td></tr>\n"
                 COVER_PAGE_CONTENT+="  <tr><td style=\"padding: 5px;\"><strong>Date:</strong></td><td style=\"padding: 5px;\">$DATE</td></tr>\n"
@@ -155,10 +154,9 @@ jobs:
                 # Hard Page Break after cover (P1), then inject the BASE_LOGO_HEADER for the TOC page (P2)
                 
                 # FIX 2: Add extra div and blank lines before TOC to isolate and remove potential "markdown" residue.
-                # FIX: Quoted
                 ISOLATION_DIV="<div style=\"height: 50px;\"></div>\n\n\n\n"
                 
-                # FIX: The concatenation must be quoted or escaped
+                # FIX: Ensure all combined variables are quoted in the final document assembly.
                 FULL_DOCUMENTATION="${COVER_PAGE_CONTENT}<div style=\"page-break-after: always;\"></div>\n\n${BASE_LOGO_HEADER}\n${ISOLATION_DIV}${GENERATED_TEXT}"
                                 
                 # 6. Inject Page Break: TOC Page 2 -> Introduction Page 3
@@ -171,13 +169,12 @@ jobs:
                 
                 
                 # Output the final document
-                # FIX: Ensure final output is quoted
                 echo -e "$FULL_DOCUMENTATION" > "$OUTPUT_FILE"
                 echo "  💾 Saved documentation with clean metadata, isolated TOC, and improved list prompts to $OUTPUT_FILE"
                 ALL_DOCS_GENERATED=true
                 break
               else
-                ERROR_MSG=$(echo "$API_RESPONSE" | jq -r ".choices[0].message.content")
+                ERROR_MSG=$(echo "$API_RESPONSE" | jq -r ".error.message // \"Unknown error\"")
                 RETRY_COUNT=$((RETRY_COUNT + 1))
                 DELAY=$((2**RETRY_COUNT))
                 echo "  ⚠️ API call failed: $ERROR_MSG (Attempt $RETRY_COUNT/$MAX_RETRIES). Retrying in $DELAY seconds..."
