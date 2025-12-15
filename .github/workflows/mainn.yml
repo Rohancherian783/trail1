@@ -1,0 +1,59 @@
+name: 📝 Automated Technical Specification Generator (OpenAI)
+
+on:
+  # Allows you to manually trigger the workflow from the GitHub Actions tab
+  workflow_dispatch:
+
+jobs:
+  generate_document:
+    runs-on: ubuntu-latest
+
+    # *** CRITICAL: Set the working directory to where your script and requirements are ***
+    defaults:
+      run:
+        working-directory: .github/workflows 
+
+    steps:
+      - name: ⬇️ Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: 🐍 Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: 📦 Install Python Dependencies
+        # Installs requirements.txt which is located in the working directory
+        run: pip install -r requirements.txt 
+          
+      - name: 🔑 Configure AI API Key
+        # Loads your secret OPENAI_API_KEY into the environment
+        run: echo "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}" >> $GITHUB_ENV
+
+      - name: 🚀 Run Document Generation Script
+        id: generate
+        # Runs doc_generator.py which is located in the working directory
+        run: python doc_generator.py 
+
+      - name: 💾 Commit Generated Document
+        if: success()
+        run: |
+          # Change back to the repository root for Git operations
+          cd $GITHUB_WORKSPACE 
+          
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          
+          # Add the output directory path (which is relative to the repository root)
+          git add cpi-artifacts/ 
+          
+          # Check if there are any changes to commit (prevents pushing empty commits)
+          if git diff --staged --quiet; then
+            echo "No changes detected in cpi-artifacts/. Skipping commit."
+          else
+            git commit -m "🤖 DOCS: Automated Technical Spec for Task1"
+            git push
+            echo "Successfully committed and pushed new document."
+          fi
