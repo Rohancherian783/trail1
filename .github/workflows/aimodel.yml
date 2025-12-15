@@ -33,7 +33,7 @@ jobs:
           
         run: |
           # --- Configuration ---
-          API_URL="[https://api.openai.com/v1/chat/completions](https://api.openai.com/v1/chat/completions)"
+          API_URL="https://api.openai.com/v1/chat/completions"
           MODEL_NAME="gpt-4o-mini"
           BASE_PKG_DIR="cpi-artifacts/$PKG_ID"
           
@@ -126,12 +126,10 @@ jobs:
                 echo "  ✅ Documentation generated successfully."
                 
                 # --- START FIX: Strip leading/trailing code block wrappers and language tags ---
-                # Remove initial ```markdown, ```text, or just ```
+                # This removes stray 'markdown' or code block fences from the AI output start/end.
                 GENERATED_TEXT_CLEANED=$(echo -e "$GENERATED_TEXT" | \
                   sed -E '1s/^\s*```(markdown|text)?//' | \
-                  # Remove standalone 'markdown' or 'text' at the beginning of the document
                   sed -E '1s/^\s*(markdown|text)//' | \
-                  # Remove trailing ```
                   sed -E '$s/\s*```\s*$//' )
                 
                 GENERATED_TEXT="$GENERATED_TEXT_CLEANED"
@@ -146,8 +144,8 @@ jobs:
                 CLEAN_IFLOW_NAME=$(echo "$IFLOW_NAME" | sed 's/_/ /g')
                 
                 # --- LOGO SETUP ---
-                SAP_LOGO_URL="[https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/sap_logo.png](https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/sap_logo.png)"
-                MOTIVEMINDS_LOGO_URL="[https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/motiveminds_logo.png](https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/motiveminds_logo.png)"
+                SAP_LOGO_URL="https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/sap_logo.png"
+                MOTIVEMINDS_LOGO_URL="https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/motiveminds_logo.png"
                 # --- END LOGO SETUP ---
                 
                 # 1. SAP Logo Block Definition (Used on Left Side)
