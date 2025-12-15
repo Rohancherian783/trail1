@@ -114,7 +114,7 @@ jobs:
               
               if [ "$GENERATED_TEXT" != "null" ] && [ -n "$GENERATED_TEXT" ]; then
                 echo "  ✅ Documentation generated successfully."
-                # --- START COVER PAGE GENERATION LOGIC (FINAL CLEAN LOGIC) ---
+                # --- START DOCUMENT ASSEMBLY USING HERE DOCUMENT (EOF) ---
                 
                 # DYNAMIC METADATA COLLECTION
                 AUTHOR=$(git log -1 --pretty=format:'%an')
@@ -123,43 +123,53 @@ jobs:
                 CLEAN_IFLOW_NAME=$(echo "$IFLOW_NAME" | sed 's/_/ /g')
                 
                 # --- LOGO SETUP ---
+                # NOTE: These variables are simple assignments and are safe.
                 SAP_LOGO_URL="https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/sap_logo.png"
                 MOTIVEMINDS_LOGO_URL="https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/motiveminds_logo.png"
-                # --- END LOGO SETUP ---
-
+                
                 # 1. SAP Logo Block Definition (Used on Left Side)
                 SAP_LOGO_BLOCK="<div style=\"float: left; text-align: left;\"><img src=\"$SAP_LOGO_URL\" alt=\"SAP Logo\" width=\"150\" height=\"60\"/></div>"
                 
                 # 2. BASE HEADER BLOCK DEFINITION (Combined logos for all pages)
                 BASE_LOGO_HEADER="${SAP_LOGO_BLOCK}<div style=\"float: right; text-align: right;\"><img src=\"$MOTIVEMINDS_LOGO_URL\" alt=\"motiveminds Logo\" width=\"150\" height=\"55\" style=\"margin-top: 5px;\"/></div><div style=\"clear: both;\"></div>"
                 
-                # 4. COVER PAGE CONTENT (Page 1) - Uses BASE_LOGO_HEADER at the top
-                # FIX: We enclose the initial assignment in double quotes.
-                COVER_PAGE_CONTENT="${BASE_LOGO_HEADER}\n" 
+                # 3. Create the entire Cover Page content using a Here Document.
+                # This ensures the shell interprets the lines correctly and avoids the "command not found" error.
+                # We also apply the Metadata table fix (using <strong> instead of **).
+                COVER_PAGE_CONTENT=$(cat << EOF
+${BASE_LOGO_HEADER}
+
+<div style="height: 80px;"></div>
+<h1 style="color: ${{ env.HEADING_COLOR }}; font-size: 3em; text-align: center; margin-top: 5px; margin-bottom: 5px;">$CLEAN_IFLOW_NAME</h1>
+<h2 style="color: ${{ env.HEADING_COLOR }}; font-size: 1.5em; text-align: center; margin-top: 5px; margin-bottom: 0px;">SAP CPI Technical Specification Document</h2>
+<div style="height: 100px;"></div>
+<div style="width: 100%; text-align: center;">
+<table border="1" style="width: 400px; border-collapse: collapse; border-color: black; margin: 0 auto; text-align: left;">
+  <tr><td style="width: 30%; padding: 5px;"><strong>Author:</strong></td><td style="padding: 5px;">$AUTHOR</td></tr>
+  <tr><td style="padding: 5px;"><strong>Date:</strong></td><td style="padding: 5px;">$DATE</td></tr>
+  <tr><td style="padding: 5px;"><strong>Version (Commit):</strong></td><td style="padding: 5px;">$VERSION</td></tr>
+</table>
+</div>
+
+EOF
+)
+                # 4. Assemble the Full Document Content (P1 -> PB -> P2/TOC -> PB -> P3/Intro)
+                # Use a second Here Document to combine P1 content, the hard page break, and the P2 content.
+                # The ISOLATION_DIV is created inline here.
+                FULL_DOCUMENTATION=$(cat << EOF_DOC
+$COVER_PAGE_CONTENT
+<div style="page-break-after: always;"></div>
+
+${BASE_LOGO_HEADER}
+<div style="height: 50px;"></div>
+
+
+
+${GENERATED_TEXT}
+EOF_DOC
+)
                 
-                # FIX: We ensure all multi-line appends are quoted to prevent command injection issues.
-                COVER_PAGE_CONTENT+="<div style=\"height: 80px;\"></div>\n"
-                COVER_PAGE_CONTENT+="<h1 style=\"color: ${{ env.HEADING_COLOR }}; font-size: 3em; text-align: center; margin-top: 5px; margin-bottom: 5px;\">$CLEAN_IFLOW_NAME</h1>\n"
-                COVER_PAGE_CONTENT+="<h2 style=\"color: ${{ env.HEADING_COLOR }}; font-size: 1.5em; text-align: center; margin-top: 5px; margin-bottom: 0px;\">SAP CPI Technical Specification Document</h2>\n"
-                COVER_PAGE_CONTENT+="<div style=\"height: 100px;\"></div>\n"
-                COVER_PAGE_CONTENT+="<div style=\"width: 100%; text-align: center;\">\n"
-                COVER_PAGE_CONTENT+="<table border=\"1\" style=\"width: 400px; border-collapse: collapse; border-color: black; margin: 0 auto; text-align: left;\">\n"
-                COVER_PAGE_CONTENT+="  <tr><td style=\"width: 30%; padding: 5px;\"><strong>Author:</strong></td><td style=\"padding: 5px;\">$AUTHOR</td></tr>\n"
-                COVER_PAGE_CONTENT+="  <tr><td style=\"padding: 5px;\"><strong>Date:</strong></td><td style=\"padding: 5px;\">$DATE</td></tr>\n"
-                COVER_PAGE_CONTENT+="  <tr><td style=\"padding: 5px;\"><strong>Version (Commit):</strong></td><td style=\"padding: 5px;\">$VERSION</td></tr>\n"
-                COVER_PAGE_CONTENT+="</table>\n"
-                COVER_PAGE_CONTENT+="</div>\n"
-                
-                # 5. Page Break and TOC Header Injection (Page 2)
-                # Hard Page Break after cover (P1), then inject the BASE_LOGO_HEADER for the TOC page (P2)
-                
-                # FIX 2: Add extra div and blank lines before TOC to isolate and remove potential "markdown" residue.
-                ISOLATION_DIV="<div style=\"height: 50px;\"></div>\n\n\n\n"
-                
-                # FIX: Ensure all combined variables are quoted in the final document assembly.
-                FULL_DOCUMENTATION="${COVER_PAGE_CONTENT}<div style=\"page-break-after: always;\"></div>\n\n${BASE_LOGO_HEADER}\n${ISOLATION_DIV}${GENERATED_TEXT}"
-                                
-                # 6. Inject Page Break: TOC Page 2 -> Introduction Page 3
+                # 5. Inject Page Break: TOC Page 2 -> Introduction Page 3
                 # Hard Page Break to start Section 1 (P3) with the logo header.
                 PAGE_BREAK_AND_HEADER_TOC_TO_SECTION1="\n<div style=\"page-break-before: always;\"></div>\n${BASE_LOGO_HEADER}\n"
                 ESCAPED_PBH_TOC=$(echo -n "$PAGE_BREAK_AND_HEADER_TOC_TO_SECTION1" | sed 's/[\/&]/\\&/g') # Escape for sed
@@ -170,7 +180,7 @@ jobs:
                 
                 # Output the final document
                 echo -e "$FULL_DOCUMENTATION" > "$OUTPUT_FILE"
-                echo "  💾 Saved documentation with clean metadata, isolated TOC, and improved list prompts to $OUTPUT_FILE"
+                echo "  💾 Saved documentation with robust variable handling and improved formatting to $OUTPUT_FILE"
                 ALL_DOCS_GENERATED=true
                 break
               else
