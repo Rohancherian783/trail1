@@ -42,7 +42,6 @@ jobs:
           
           # --- Prompt Definitions: STRICT HIERARCHICAL STRUCTURE (WITH BLUE HTML HEADINGS) ---
           SYSTEM_PROMPT="You are a senior SAP CPI Technical Architect. Your task is to analyze ALL provided code and configuration files from the SINGLE iFlow provided and synthesize them into ONE consolidated Markdown documentation report. You MUST adhere strictly to the following hierarchical 6-point structure. CRITICALLY, you MUST ONLY use the required inline HTML tags for all headings (H1 and H2) to ensure the dark blue color (\`${{ env.HEADING_COLOR }}\`) is applied. DO NOT use Markdown heading syntax (# or ##) for the main report body headings. Ensure all technical details (like Groovy, XSLT, Adapters, Security) are thoroughly explained within the relevant sections.
-
           **MANDATORY FIRST SECTION: TABLE OF CONTENTS (TOC) PAGE**
           The very first output of the document MUST be the Table of Contents. Format the TOC heading using HTML to achieve a prominent blue color and large font, like this: \`<h1 style=\"color: ${{ env.HEADING_COLOR }}; font-size: 2.5em;\">Table of Contents</h1>\`. Below this heading, list all 6 main sections and their subsections using standard Markdown numbered list syntax (e.g., 1., 1.1., 1.2., etc.). CRITICALLY, after *every single list item* (e.g., after 1., after 1.1., after 1.2., etc.) you MUST insert the HTML tag \`<br>\` to ensure the list items are correctly separated and rendered on new lines in the final PDF. Use a generous number of blank lines (e.g., 10 lines) after the TOC list to create maximum visual separation, then **add the unique marker '---TOC-END-PAGE-BREAK---' on its own line before starting Section 1.**
           
@@ -53,9 +52,9 @@ jobs:
           <h1 style=\"color: ${{ env.HEADING_COLOR }};\">2. Integration Overview</h1>
           <h2 style=\"color: ${{ env.HEADING_COLOR }};\">2.1 Integration Architecture</h2> (Map: High-level architecture + Process Diagram)
           (Output the High-Level Process Flow Diagram immediately after the architecture text using only Mermaid syntax within a \`\`\`mermaid code block. The diagram must be a 'graph TD' (Top-Down) flowchart showing the major systems and their high-level interaction points, NOT the low-level iFlow steps. **CRITICAL: Ensure there is one blank line immediately following the closing \`\`\` of the Mermaid block.**)
-          <h2 style=\"color: ${{ env.HEADING_COLOR }};\">2.2 Integration Components</h2> (Map: Sender/Receiver systems + Adapter types used. **CRITICALLY: This section's description MUST be rendered as a Markdown bulleted list (`* Item`).**)
+          <h2 style=\"color: ${{ env.HEADING_COLOR }};\">2.2 Integration Components</h2> (Map: Sender/Receiver systems + Adapter types used)
           <h1 style=\"color: ${{ env.HEADING_COLOR }};\">3. Integration Scenarios</h1>
-          <h2 style=\"color: ${{ env.HEADING_COLOR }};\">3.1 Scenario Description</h2> (Map: Step-by-step flow explanation detailing the iFlow path. **CRITICALLY: This description MUST be rendered as a Markdown numbered list (`1. Step One`, `2. Step Two`, etc.) to show a clear sequential process.**)
+          <h2 style=\"color: ${{ env.HEADING_COLOR }};\">3.1 Scenario Description</h2> (Map: Step-by-step flow explanation detailing the iFlow path)
           <h2 style=\"color: ${{ env.HEADING_COLOR }};\">3.2 Data Flows</h2> (Map: Mapping logic summary (XSLT/Mappings) + Groovy script explanations (usage/purpose))
           <h2 style=\"color: ${{ env.HEADING_COLOR }};\">3.3 Security Requirements</h2> (Map: Security/authentication details on mechanisms, credentials, and configuration)
           <h1 style=\"color: ${{ env.HEADING_COLOR }};\">4. Error Handling and Logging</h1> (Map: Error handling details)
@@ -114,7 +113,7 @@ jobs:
               
               if [ "$GENERATED_TEXT" != "null" ] && [ -n "$GENERATED_TEXT" ]; then
                 echo "  ✅ Documentation generated successfully."
-                # --- START DOCUMENT ASSEMBLY ---
+                # --- START COVER PAGE GENERATION LOGIC (FINAL CLEAN LOGIC) ---
                 
                 # DYNAMIC METADATA COLLECTION
                 AUTHOR=$(git log -1 --pretty=format:'%an')
@@ -125,51 +124,33 @@ jobs:
                 # --- LOGO SETUP ---
                 SAP_LOGO_URL="https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/sap_logo.png"
                 MOTIVEMINDS_LOGO_URL="https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/motiveminds_logo.png"
-                
-                # 1. SAP Logo Block Definition
+                # --- END LOGO SETUP ---
+                # 1. SAP Logo Block Definition (Used on Left Side)
                 SAP_LOGO_BLOCK="<div style=\"float: left; text-align: left;\"><img src=\"$SAP_LOGO_URL\" alt=\"SAP Logo\" width=\"150\" height=\"60\"/></div>"
                 
-                # 2. BASE HEADER BLOCK DEFINITION
+                # 2. BASE HEADER BLOCK DEFINITION (Combined logos for all pages)
                 BASE_LOGO_HEADER="${SAP_LOGO_BLOCK}<div style=\"float: right; text-align: right;\"><img src=\"$MOTIVEMINDS_LOGO_URL\" alt=\"motiveminds Logo\" width=\"150\" height=\"55\" style=\"margin-top: 5px;\"/></div><div style=\"clear: both;\"></div>"
                 
-                # 3. Create the entire Cover Page content using a Here Document (COVER_EOF).
-                # This fixes the shell execution errors (e.g., 'assets: command not found').
-                # It also includes the fix for the metadata table (using <strong>).
-                COVER_PAGE_CONTENT=$(cat << 'COVER_EOF'
-${BASE_LOGO_HEADER}
-
-<div style="height: 80px;"></div>
-<h1 style="color: ${{ env.HEADING_COLOR }}; font-size: 3em; text-align: center; margin-top: 5px; margin-bottom: 5px;">$CLEAN_IFLOW_NAME</h1>
-<h2 style="color: ${{ env.HEADING_COLOR }}; font-size: 1.5em; text-align: center; margin-top: 5px; margin-bottom: 0px;">SAP CPI Technical Specification Document</h2>
-<div style="height: 100px;"></div>
-<div style="width: 100%; text-align: center;">
-<table border="1" style="width: 400px; border-collapse: collapse; border-color: black; margin: 0 auto; text-align: left;">
-  <tr><td style="width: 30%; padding: 5px;"><strong>Author:</strong></td><td style="padding: 5px;">$AUTHOR</td></tr>
-  <tr><td style="padding: 5px;"><strong>Date:</strong></td><td style="padding: 5px;">$DATE</td></tr>
-  <tr><td style="padding: 5px;"><strong>Version (Commit):</strong></td><td style="padding: 5px;">$VERSION</td></tr>
-</table>
-</div>
-
-COVER_EOF
-)
-                # 4. Assemble the Full Document Content (P1 -> PB -> P2/TOC -> PB -> P3/Intro)
-                # The single quotes around 'COVER_EOF' stop bash from trying to expand variables 
-                # inside the HereDoc before assignment. Now we manually expand the variables:
-                COVER_PAGE_CONTENT=$(echo "$COVER_PAGE_CONTENT" | sed \
-                  -e "s|\${BASE_LOGO_HEADER}|$BASE_LOGO_HEADER|g" \
-                  -e "s|\${{ env.HEADING_COLOR }}|${{ env.HEADING_COLOR }}|g" \
-                  -e "s|\$CLEAN_IFLOW_NAME|$CLEAN_IFLOW_NAME|g" \
-                  -e "s|\$AUTHOR|$AUTHOR|g" \
-                  -e "s|\$DATE|$DATE|g" \
-                  -e "s|\$VERSION|$VERSION|g")
-
-                # Set isolation div (Fix for unwanted 'markdown' text on TOC page)
-                ISOLATION_DIV="<div style=\"height: 50px;\"></div>\n\n\n\n"
-
-                # Combine all parts safely using shell quoting
-                FULL_DOCUMENTATION="${COVER_PAGE_CONTENT}\n<div style=\"page-break-after: always;\"></div>\n\n${BASE_LOGO_HEADER}\n${ISOLATION_DIV}\n${GENERATED_TEXT}"
+                # 4. COVER PAGE CONTENT (Page 1) - Uses BASE_LOGO_HEADER at the top
+                COVER_PAGE_CONTENT="${BASE_LOGO_HEADER}\n" # Logos on Page 1
+                COVER_PAGE_CONTENT+="<div style=\"height: 80px;\"></div>"
+                COVER_PAGE_CONTENT+="<h1 style=\"color: ${{ env.HEADING_COLOR }}; font-size: 3em; text-align: center; margin-top: 5px; margin-bottom: 5px;\">$CLEAN_IFLOW_NAME</h1>"
+                COVER_PAGE_CONTENT+="<h2 style=\"color: ${{ env.HEADING_COLOR }}; font-size: 1.5em; text-align: center; margin-top: 5px; margin-bottom: 0px;\">SAP CPI Technical Specification Document</h2>"
+                COVER_PAGE_CONTENT+="<div style=\"height: 100px;\"></div>"
+                COVER_PAGE_CONTENT+="<div style=\"width: 100%; text-align: center;\">\n"
+                COVER_PAGE_CONTENT+="<table border=\"1\" style=\"width: 400px; border-collapse: collapse; border-color: black; margin: 0 auto; text-align: left;\">\n"
+                COVER_PAGE_CONTENT+="  <tr><td style=\"width: 30%; padding: 5px;\">**Author:**</td><td style=\"padding: 5px;\">$AUTHOR</td></tr>\n"
+                COVER_PAGE_CONTENT+="  <tr><td style=\"padding: 5px;\">**Date:**</td><td style=\"padding: 5px;\">$DATE</td></tr>\n"
+                COVER_PAGE_CONTENT+="  <tr><td style=\"padding: 5px;\">**Version (Commit):**</td><td style=\"padding: 5px;\">$VERSION</td></tr>\n"
+                COVER_PAGE_CONTENT+="</table>\n"
+                COVER_PAGE_CONTENT+="</div>\n"
+                
+                # 5. Page Break and TOC Header Injection (Page 2)
+                # Hard Page Break after cover (P1), then inject the BASE_LOGO_HEADER for the TOC page (P2)
+                FULL_DOCUMENTATION="${COVER_PAGE_CONTENT}<div style=\"page-break-after: always;\"></div>\n\n${BASE_LOGO_HEADER}\n${GENERATED_TEXT}"
                                 
-                # 5. Inject Page Break: TOC Page 2 -> Introduction Page 3
+                # 6. Inject Page Break: TOC Page 2 -> Introduction Page 3
+                # Hard Page Break to start Section 1 (P3) with the logo header.
                 PAGE_BREAK_AND_HEADER_TOC_TO_SECTION1="\n<div style=\"page-break-before: always;\"></div>\n${BASE_LOGO_HEADER}\n"
                 ESCAPED_PBH_TOC=$(echo -n "$PAGE_BREAK_AND_HEADER_TOC_TO_SECTION1" | sed 's/[\/&]/\\&/g') # Escape for sed
                 
@@ -179,7 +160,7 @@ COVER_EOF
                 
                 # Output the final document
                 echo -e "$FULL_DOCUMENTATION" > "$OUTPUT_FILE"
-                echo "  💾 Saved documentation with robust variable handling and improved formatting to $OUTPUT_FILE"
+                echo "  💾 Saved documentation with clean logo injection for P1, P2, and P3 and improved TOC formatting logic to $OUTPUT_FILE"
                 ALL_DOCS_GENERATED=true
                 break
               else
