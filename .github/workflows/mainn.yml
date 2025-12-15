@@ -41,9 +41,10 @@ jobs:
       - name: 🚀 Run Document Generation Script
         id: generate
         env:
-          # Pass the manually entered inputs as environment variables
           INPUT_PACKAGE_NAME: ${{ github.event.inputs.package_name }}
           INPUT_IFLOW_NAME: ${{ github.event.inputs.iflow_name }}
+          # --- CRITICAL FIX: Pass the absolute workspace root to Python ---
+          GITHUB_WORKSPACE_ROOT: ${{ github.workspace }} 
         run: python doc_generator.py 
 
       - name: 💾 Commit Generated Document
@@ -52,32 +53,30 @@ jobs:
           # 1. Change back to the repository root for Git operations
           cd $GITHUB_WORKSPACE 
           
-          # Use the inputs to define the commit variables
+          # 2. --- CRITICAL FIX: Read the RELATIVE path from the file created by Python ---
+          # This path is relative to the repo root and is guaranteed to be correct for Git.
+          OUTPUT_PATH=$(cat .github/workflows/output_path.txt)
+
           PACKAGE_NAME=${{ github.event.inputs.package_name }}
           IFLOW_NAME=${{ github.event.inputs.iflow_name }}
 
-          # Define the exact output path to ensure git can find the file
-          OUTPUT_PATH="cpi-artifacts/${PACKAGE_NAME}/${IFLOW_NAME}/${IFLOW_NAME}_Technical_Spec_Body.html"
-          
-          # --- DEBUG AND CRITICAL FILE CHECK ---
+          # 3. Check and Stage the file
           if [ -f "$OUTPUT_PATH" ]; then
-            echo "✅ Output file confirmed at: $OUTPUT_PATH"
+            echo "✅ Output file confirmed at relative path: $OUTPUT_PATH"
           else
             echo "❌ ERROR: Output file NOT found at: $OUTPUT_PATH"
-            # Exit 1 to stop the workflow if the file is missing
             exit 1 
           fi
           
-          # 2. Stage the file
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           
           # Stage the specific file path
           git add "$OUTPUT_PATH"
           
-          # 3. Check and Commit
+          # 4. Check and Commit
           if git diff --staged --quiet; then
-            echo "No changes detected (file was already present and identical). Skipping commit."
+            echo "No changes detected. Skipping commit."
           else
             git commit -m "🤖 DOCS: Automated Technical Spec for Package: ${PACKAGE_NAME} / iFlow: ${IFLOW_NAME}"
             git push
