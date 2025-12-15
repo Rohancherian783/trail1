@@ -42,6 +42,7 @@ jobs:
           
           # --- Prompt Definitions: STRICT HIERARCHICAL STRUCTURE (WITH BLUE HTML HEADINGS) ---
           SYSTEM_PROMPT="You are a senior SAP CPI Technical Architect. Your task is to analyze ALL provided code and configuration files from the SINGLE iFlow provided and synthesize them into ONE consolidated Markdown documentation report. You MUST adhere strictly to the following hierarchical 6-point structure. CRITICALLY, you MUST ONLY use the required inline HTML tags for all headings (H1 and H2) to ensure the dark blue color (\`${{ env.HEADING_COLOR }}\`) is applied. DO NOT use Markdown heading syntax (# or ##) for the main report body headings. Ensure all technical details (like Groovy, XSLT, Adapters, Security) are thoroughly explained within the relevant sections.
+
           **MANDATORY FIRST SECTION: TABLE OF CONTENTS (TOC) PAGE**
           The very first output of the document MUST be the Table of Contents. Format the TOC heading using HTML to achieve a prominent blue color and large font, like this: \`<h1 style=\"color: ${{ env.HEADING_COLOR }}; font-size: 2.5em;\">Table of Contents</h1>\`. Below this heading, list all 6 main sections and their subsections using standard Markdown numbered list syntax (e.g., 1., 1.1., 1.2., etc.). CRITICALLY, after *every single list item* (e.g., after 1., after 1.1., after 1.2., etc.) you MUST insert the HTML tag \`<br>\` to ensure the list items are correctly separated and rendered on new lines in the final PDF. Use a generous number of blank lines (e.g., 10 lines) after the TOC list to create maximum visual separation, then **add the unique marker '---TOC-END-PAGE-BREAK---' on its own line before starting Section 1.**
           
@@ -52,9 +53,9 @@ jobs:
           <h1 style=\"color: ${{ env.HEADING_COLOR }};\">2. Integration Overview</h1>
           <h2 style=\"color: ${{ env.HEADING_COLOR }};\">2.1 Integration Architecture</h2> (Map: High-level architecture + Process Diagram)
           (Output the High-Level Process Flow Diagram immediately after the architecture text using only Mermaid syntax within a \`\`\`mermaid code block. The diagram must be a 'graph TD' (Top-Down) flowchart showing the major systems and their high-level interaction points, NOT the low-level iFlow steps. **CRITICAL: Ensure there is one blank line immediately following the closing \`\`\` of the Mermaid block.**)
-          <h2 style=\"color: ${{ env.HEADING_COLOR }};\">2.2 Integration Components</h2> (Map: Sender/Receiver systems + Adapter types used)
+          <h2 style=\"color: ${{ env.HEADING_COLOR }};\">2.2 Integration Components</h2> (Map: Sender/Receiver systems + Adapter types used. **CRITICALLY: This section's description MUST be rendered as a Markdown bulleted list (`* Item`).**)
           <h1 style=\"color: ${{ env.HEADING_COLOR }};\">3. Integration Scenarios</h1>
-          <h2 style=\"color: ${{ env.HEADING_COLOR }};\">3.1 Scenario Description</h2> (Map: Step-by-step flow explanation detailing the iFlow path)
+          <h2 style=\"color: ${{ env.HEADING_COLOR }};\">3.1 Scenario Description</h2> (Map: Step-by-step flow explanation detailing the iFlow path. **CRITICALLY: This description MUST be rendered as a Markdown numbered list (`1. Step One`, `2. Step Two`, etc.) to show a clear sequential process.**)
           <h2 style=\"color: ${{ env.HEADING_COLOR }};\">3.2 Data Flows</h2> (Map: Mapping logic summary (XSLT/Mappings) + Groovy script explanations (usage/purpose))
           <h2 style=\"color: ${{ env.HEADING_COLOR }};\">3.3 Security Requirements</h2> (Map: Security/authentication details on mechanisms, credentials, and configuration)
           <h1 style=\"color: ${{ env.HEADING_COLOR }};\">4. Error Handling and Logging</h1> (Map: Error handling details)
@@ -125,6 +126,7 @@ jobs:
                 SAP_LOGO_URL="https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/sap_logo.png"
                 MOTIVEMINDS_LOGO_URL="https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/motiveminds_logo.png"
                 # --- END LOGO SETUP ---
+
                 # 1. SAP Logo Block Definition (Used on Left Side)
                 SAP_LOGO_BLOCK="<div style=\"float: left; text-align: left;\"><img src=\"$SAP_LOGO_URL\" alt=\"SAP Logo\" width=\"150\" height=\"60\"/></div>"
                 
@@ -138,16 +140,21 @@ jobs:
                 COVER_PAGE_CONTENT+="<h2 style=\"color: ${{ env.HEADING_COLOR }}; font-size: 1.5em; text-align: center; margin-top: 5px; margin-bottom: 0px;\">SAP CPI Technical Specification Document</h2>"
                 COVER_PAGE_CONTENT+="<div style=\"height: 100px;\"></div>"
                 COVER_PAGE_CONTENT+="<div style=\"width: 100%; text-align: center;\">\n"
+                # FIX 1: Replace Markdown bold (**) with HTML strong (<strong>) inside the table to prevent * from appearing.
                 COVER_PAGE_CONTENT+="<table border=\"1\" style=\"width: 400px; border-collapse: collapse; border-color: black; margin: 0 auto; text-align: left;\">\n"
-                COVER_PAGE_CONTENT+="  <tr><td style=\"width: 30%; padding: 5px;\">**Author:**</td><td style=\"padding: 5px;\">$AUTHOR</td></tr>\n"
-                COVER_PAGE_CONTENT+="  <tr><td style=\"padding: 5px;\">**Date:**</td><td style=\"padding: 5px;\">$DATE</td></tr>\n"
-                COVER_PAGE_CONTENT+="  <tr><td style=\"padding: 5px;\">**Version (Commit):**</td><td style=\"padding: 5px;\">$VERSION</td></tr>\n"
+                COVER_PAGE_CONTENT+="  <tr><td style=\"width: 30%; padding: 5px;\"><strong>Author:</strong></td><td style=\"padding: 5px;\">$AUTHOR</td></tr>\n"
+                COVER_PAGE_CONTENT+="  <tr><td style=\"padding: 5px;\"><strong>Date:</strong></td><td style=\"padding: 5px;\">$DATE</td></tr>\n"
+                COVER_PAGE_CONTENT+="  <tr><td style=\"padding: 5px;\"><strong>Version (Commit):</strong></td><td style=\"padding: 5px;\">$VERSION</td></tr>\n"
                 COVER_PAGE_CONTENT+="</table>\n"
                 COVER_PAGE_CONTENT+="</div>\n"
                 
                 # 5. Page Break and TOC Header Injection (Page 2)
                 # Hard Page Break after cover (P1), then inject the BASE_LOGO_HEADER for the TOC page (P2)
-                FULL_DOCUMENTATION="${COVER_PAGE_CONTENT}<div style=\"page-break-after: always;\"></div>\n\n${BASE_LOGO_HEADER}\n${GENERATED_TEXT}"
+                
+                # FIX 2: Add extra div and blank lines before TOC to isolate and remove potential "markdown" residue.
+                ISOLATION_DIV="<div style=\"height: 50px;\"></div>\n\n\n\n"
+                
+                FULL_DOCUMENTATION="${COVER_PAGE_CONTENT}<div style=\"page-break-after: always;\"></div>\n\n${BASE_LOGO_HEADER}\n${ISOLATION_DIV}${GENERATED_TEXT}"
                                 
                 # 6. Inject Page Break: TOC Page 2 -> Introduction Page 3
                 # Hard Page Break to start Section 1 (P3) with the logo header.
@@ -160,11 +167,11 @@ jobs:
                 
                 # Output the final document
                 echo -e "$FULL_DOCUMENTATION" > "$OUTPUT_FILE"
-                echo "  💾 Saved documentation with clean logo injection for P1, P2, and P3 and improved TOC formatting logic to $OUTPUT_FILE"
+                echo "  💾 Saved documentation with clean metadata, isolated TOC, and improved list prompts to $OUTPUT_FILE"
                 ALL_DOCS_GENERATED=true
                 break
               else
-                ERROR_MSG=$(echo "$API_RESPONSE" | jq -r ".error.message // \"Unknown error\"")
+                ERROR_MSG=$(echo "$API_RESPONSE" | jq -r ".choices[0].message.content")
                 RETRY_COUNT=$((RETRY_COUNT + 1))
                 DELAY=$((2**RETRY_COUNT))
                 echo "  ⚠️ API call failed: $ERROR_MSG (Attempt $RETRY_COUNT/$MAX_RETRIES). Retrying in $DELAY seconds..."
