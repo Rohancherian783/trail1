@@ -1,4 +1,5 @@
 name: 🤖 Generation Indivual Iflow documentation
+
 on:
   workflow_dispatch:
     inputs:
@@ -12,9 +13,11 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        
       - name: Install Dependencies (jq only)
         run: |
           sudo apt-get update
@@ -26,13 +29,14 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           PKG_ID: ${{ github.event.inputs.package_id }}
           # Define the target blue color here
-          HEADING_COLOR: "#1f4e79" 
+          HEADING_COLOR: "#1f4e79"
+          
         run: |
           # --- Configuration ---
-          API_URL="https://api.openai.com/v1/chat/completions"
+          API_URL="[https://api.openai.com/v1/chat/completions](https://api.openai.com/v1/chat/completions)"
           MODEL_NAME="gpt-4o-mini"
           BASE_PKG_DIR="cpi-artifacts/$PKG_ID"
-                    
+          
           if [ ! -d "$BASE_PKG_DIR" ]; then
             echo "::error::Package directory not found at: $BASE_PKG_DIR"
             echo "::error::Please ensure package artifacts were synced first and the Package ID ('$PKG_ID') is correct."
@@ -60,7 +64,7 @@ jobs:
           <h1 style=\"color: ${{ env.HEADING_COLOR }};\">4. Error Handling and Logging</h1> (Map: Error handling details)
           <h1 style=\"color: ${{ env.HEADING_COLOR }};\">5. Testing Validation</h1> (Summarize key testing requirements/scenarios based on iFlow logic)
           <h1 style=\"color: ${{ env.HEADING_COLOR }};\">6. Reference Documents</h1> (List the input artifacts analyzed: iFlowContent.xml, Groovy scripts, XSLT files, etc.)"
-                      
+          
           FULL_IFLOW_PATHS=$(find "$BASE_PKG_DIR" -type f \( -name 'iFlowContent.xml' -o -name '*.iflw' \) -print)
           
           if [ -z "$FULL_IFLOW_PATHS" ]; then
@@ -98,7 +102,14 @@ jobs:
               --arg system "$SYSTEM_PROMPT" \
               --arg query "$USER_QUERY" \
               --arg model "$MODEL_NAME" \
-              '{                model: $model,                messages: [                  {role: "system", content: $system},                  {role: "user", content: $query}                ],                temperature: 0.1              }')
+              '{
+                model: $model,
+                messages: [
+                  {role: "system", content: $system},
+                  {role: "user", content: $query}
+                ],
+                temperature: 0.1
+              }')
               
             MAX_RETRIES=3
             RETRY_COUNT=0
@@ -108,11 +119,24 @@ jobs:
                 -H "Content-Type: application/json" \
                 -H "Authorization: Bearer $OPENAI_API_KEY" \
                 -d "$PAYLOAD")
-              
+                
               GENERATED_TEXT=$(echo "$API_RESPONSE" | jq -r ".choices[0].message.content")
               
               if [ "$GENERATED_TEXT" != "null" ] && [ -n "$GENERATED_TEXT" ]; then
                 echo "  ✅ Documentation generated successfully."
+                
+                # --- START FIX: Strip leading/trailing code block wrappers and language tags ---
+                # Remove initial ```markdown, ```text, or just ```
+                GENERATED_TEXT_CLEANED=$(echo -e "$GENERATED_TEXT" | \
+                  sed -E '1s/^\s*```(markdown|text)?//' | \
+                  # Remove standalone 'markdown' or 'text' at the beginning of the document
+                  sed -E '1s/^\s*(markdown|text)//' | \
+                  # Remove trailing ```
+                  sed -E '$s/\s*```\s*$//' )
+                
+                GENERATED_TEXT="$GENERATED_TEXT_CLEANED"
+                # --- END FIX ---
+                
                 # --- START COVER PAGE GENERATION LOGIC (FINAL CLEAN LOGIC) ---
                 
                 # DYNAMIC METADATA COLLECTION
@@ -122,9 +146,10 @@ jobs:
                 CLEAN_IFLOW_NAME=$(echo "$IFLOW_NAME" | sed 's/_/ /g')
                 
                 # --- LOGO SETUP ---
-                SAP_LOGO_URL="https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/sap_logo.png"
-                MOTIVEMINDS_LOGO_URL="https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/motiveminds_logo.png"
+                SAP_LOGO_URL="[https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/sap_logo.png](https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/sap_logo.png)"
+                MOTIVEMINDS_LOGO_URL="[https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/motiveminds_logo.png](https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/motiveminds_logo.png)"
                 # --- END LOGO SETUP ---
+                
                 # 1. SAP Logo Block Definition (Used on Left Side)
                 SAP_LOGO_BLOCK="<div style=\"float: left; text-align: left;\"><img src=\"$SAP_LOGO_URL\" alt=\"SAP Logo\" width=\"150\" height=\"60\"/></div>"
                 
@@ -148,7 +173,7 @@ jobs:
                 # 5. Page Break and TOC Header Injection (Page 2)
                 # Hard Page Break after cover (P1), then inject the BASE_LOGO_HEADER for the TOC page (P2)
                 FULL_DOCUMENTATION="${COVER_PAGE_CONTENT}<div style=\"page-break-after: always;\"></div>\n\n${BASE_LOGO_HEADER}\n${GENERATED_TEXT}"
-                                
+                
                 # 6. Inject Page Break: TOC Page 2 -> Introduction Page 3
                 # Hard Page Break to start Section 1 (P3) with the logo header.
                 PAGE_BREAK_AND_HEADER_TOC_TO_SECTION1="\n<div style=\"page-break-before: always;\"></div>\n${BASE_LOGO_HEADER}\n"
@@ -156,7 +181,6 @@ jobs:
                 
                 # Replace the TOC marker with the Page Break + Header block
                 FULL_DOCUMENTATION=$(echo -e "$FULL_DOCUMENTATION" | sed -E "s|---TOC-END-PAGE-BREAK---|${ESCAPED_PBH_TOC}|g")
-                
                 
                 # Output the final document
                 echo -e "$FULL_DOCUMENTATION" > "$OUTPUT_FILE"
@@ -174,7 +198,7 @@ jobs:
           done
           
           echo "docs_generated=$ALL_DOCS_GENERATED" >> $GITHUB_OUTPUT
-      
+          
       - name: Commit All Generated iFlow Documentation
         if: steps.documentation_step.outputs.docs_generated == 'true'
         run: |
@@ -182,9 +206,9 @@ jobs:
           git config user.email "actions@github.com"
           PKG_ID="${{ github.event.inputs.package_id }}"
           OUTPUT_PATH="cpi-artifacts/$PKG_ID/**/*_Summary.md"
-                                
+          
           git add "$OUTPUT_PATH"
-                                
+          
           if git diff --cached --quiet "$OUTPUT_PATH"; then
               echo "No meaningful changes detected in the generated documentation files. Skipping commit."
           else
