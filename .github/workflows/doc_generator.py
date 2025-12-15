@@ -2,26 +2,28 @@ import os
 import json
 from docx import Document
 from openai import OpenAI
-import sys # For clean exiting
+import sys
 
 # --- Configuration ---
-# Your Word template path
-DOCX_TEMPLATE_PATH = 'assets/project_template.docx' 
-# Output directory where the generated file will be saved
-OUTPUT_DIR = 'cpi-artifacts/PDFcoveter/Task1/'
-OUTPUT_FILENAME = 'Task1_Technical_Spec_Body.html'
+# Read dynamic inputs from environment variables
+INPUT_PACKAGE_NAME = os.environ.get("INPUT_PACKAGE_NAME")
+INPUT_IFLOW_NAME = os.environ.get("INPUT_IFLOW_NAME")
 
-# Project-specific context (Update this with your iFlow details)
+# *** PATHS *** (Relative to the .github/workflows/ directory)
+DOCX_TEMPLATE_PATH = '../assets/project_template.docx' 
+OUTPUT_DIR = f'../cpi-artifacts/{INPUT_PACKAGE_NAME}/{INPUT_IFLOW_NAME}/'
+OUTPUT_FILENAME = f'{INPUT_IFLOW_NAME}_Technical_Spec_Body.html'
+
+# Project-specific context (Update static details here, dynamic parts use inputs)
 PROJECT_CONTEXT = {
-    "iflow_name": "Task1",
+    "iflow_name": INPUT_IFLOW_NAME, # Dynamic
+    "package_name": INPUT_PACKAGE_NAME, # Dynamic
     "author": "Rohancherian783",
     "source_system": "SAP S/4HANA (IDoc)",
     "target_system": "Internal HR System (REST API)",
     "integration_scenario": "Asynchronous Employee Data Replication",
-    "security_protocol": "Basic Authentication over HTTPS",
-    "data_flow": "S4HANA -> CPI -> HR System"
+    "security_protocol": "Basic Authentication over HTTPS"
 }
-
 # --- Helper Functions ---
 
 def extract_text_from_docx(file_path):
@@ -29,14 +31,10 @@ def extract_text_from_docx(file_path):
     try:
         if not os.path.exists(file_path):
             print(f"ERROR: Word template not found at {file_path}")
-            # Exit 1 will fail the GitHub Action run
             sys.exit(1)
             
         document = Document(file_path)
-        # Extract text from paragraphs, skipping empty lines
         full_text = [p.text for p in document.paragraphs if p.text.strip()]
-        
-        # Join paragraphs with two newlines for better AI separation
         return '\n\n'.join(full_text)
         
     except Exception as e:
@@ -44,17 +42,10 @@ def extract_text_from_docx(file_path):
         sys.exit(1)
 
 def call_openai_api(prompt, api_key):
-    """
-    Calls the OpenAI API to generate the document content.
-    """
-    print("--- DEBUG: Calling OpenAI API for content generation ---")
-    
+    """Calls the OpenAI API to generate the document content."""
+    # ... (function body remains the same as before) ...
     try:
-        # Initialize the OpenAI client
-        # The key is automatically read from the OPENAI_API_KEY environment variable if not specified, 
-        # but we explicitly pass it for clarity.
         client = OpenAI(api_key=api_key)
-        
         model = "gpt-4o-mini" 
 
         response = client.chat.completions.create(
@@ -68,33 +59,33 @@ def call_openai_api(prompt, api_key):
                  "only provide the body content starting from Section 1."},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.3, # Keeps the output focused and technical
+            temperature=0.3,
         )
-        
         ai_generated_content = response.choices[0].message.content
-        
         print(f"DEBUG: AI response received (length: {len(ai_generated_content)})")
         return ai_generated_content
         
     except Exception as e:
         print(f"FATAL ERROR: OpenAI API call failed: {e}")
-        # Return an empty string on failure
         return ""
 
 
 def main():
     """Main function to generate and save the document."""
     
-    # 1. Get API Key from environment
+    # 1. Check for inputs and API key
+    if not INPUT_PACKAGE_NAME or not INPUT_IFLOW_NAME:
+        print("FATAL ERROR: Package Name and iFlow Name were not passed from the workflow input.")
+        sys.exit(1)
+        
     openai_api_key = os.environ.get("OPENAI_API_KEY")
     if not openai_api_key:
-        print("FATAL ERROR: OPENAI_API_KEY environment variable not set. Did you configure the GitHub Secret?")
+        print("FATAL ERROR: OPENAI_API_KEY environment variable not set.")
         sys.exit(1)
 
     # 2. Extract Template Content
     print(f"Attempting to read template from: {DOCX_TEMPLATE_PATH}")
     template_content = extract_text_from_docx(DOCX_TEMPLATE_PATH)
-    # The extract_text_from_docx function handles exiting if the file is not found
 
     # 3. Construct the Prompt
     context_str = json.dumps(PROJECT_CONTEXT, indent=2)
@@ -116,9 +107,6 @@ def main():
         sys.exit(1) 
 
     # 5. Assemble and Save the Final Document
-    # NOTE: You will need to integrate the Cover Page/TOC generation from your other script
-    # For now, we save only the generated body into the specified output path.
-    
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     output_path = os.path.join(OUTPUT_DIR, OUTPUT_FILENAME)
     
