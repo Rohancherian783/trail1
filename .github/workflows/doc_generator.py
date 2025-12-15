@@ -3,6 +3,7 @@ import json
 from docx import Document
 from openai import OpenAI
 import sys
+import xml.etree.ElementTree as ET # <<< ADDED IMPORT FOR XML PARSING
 
 # --- Configuration ---
 # Read dynamic inputs from environment variables
@@ -18,8 +19,7 @@ DOCX_TEMPLATE_PATH = '../../assets/project_template.docx'
 RELATIVE_OUTPUT_PATH_DIR = f'cpi-artifacts/{INPUT_PACKAGE_NAME}/{INPUT_IFLOW_NAME}'
 OUTPUT_FILENAME = f'{INPUT_IFLOW_NAME}_Technical_Spec_Body.html'
 
-# *** CRITICAL PATH FIX ***
-# This now points directly to the Task1.iflw file inside the resources structure.
+# *** CRITICAL PATH FIX: Path to the .iflw file ***
 IFLOW_SOURCE_FILENAME = f'{INPUT_IFLOW_NAME}.iflw' 
 NESTED_IFLOW_SUBPATH = f'src/main/resources/scenarioflows/integrationflow/{IFLOW_SOURCE_FILENAME}'
 RELATIVE_IFLOW_SOURCE_PATH = os.path.join(RELATIVE_OUTPUT_PATH_DIR, NESTED_IFLOW_SUBPATH)
@@ -62,7 +62,7 @@ def call_openai_api(prompt, api_key):
                 {"role": "system", "content": 
                  "You are an expert SAP CPI Technical Writer. Your task is to generate the "
                  "complete technical specification document in **clean, valid HTML format**. "
-                 "Analyze the provided iFlow XML/configuration data and fill in the document "
+                 "Analyze the provided iFlow configuration data and fill in the document "
                  "with specific details on Endpoints, Mappings, Security, and Error Handling. "
                  "DO NOT include the cover page or Table of Contents (TOC)."},
                 {"role": "user", "content": prompt}
@@ -70,26 +70,62 @@ def call_openai_api(prompt, api_key):
             temperature=0.3,
         )
         ai_generated_content = response.choices[0].message.content
-        print(f"DEBUG: AI response received (length: {len(ai_generated_content)})")
         return ai_generated_content
         
     except Exception as e:
         print(f"FATAL ERROR: OpenAI API call failed: {e}")
         return ""
 
+def parse_iflow_xml(xml_content):
+    """
+    Parses the iFlow XML content to extract key technical details for the AI.
+    *** CRITICAL: You MUST inspect your .iflw file and adjust these XPaths. ***
+    """
+    try:
+        root = ET.fromstring(xml_content)
+        details = {}
+        
+        # --- Example XPaths (Adjust these to match your CPI XML structure) ---
+        # 1. Receiver Endpoint (Target URL)
+        # Often found in a configuration property of a Send step
+        receiver_address = root.find(".//endpoint/address") 
+        details['Target_Endpoint_URL'] = receiver_address.text if receiver_address is not None and receiver_address.text else "N/A"
+        
+        # 2. Sender Details (Initial URL or Message Type)
+        sender_type = root.find(".//sender/messageProtocol")
+        details['Sender_Protocol'] = sender_type.text if sender_type is not None else "HTTPS/IDoc"
+
+        # 3. Security (Find credential name or security method)
+        credential = root.find(".//security/credentialName")
+        details['Security_Credential_Name'] = credential.text if credential is not None else "BasicAuth_Default"
+        
+        # 4. Scripting Files (Custom logic)
+        scripts = [s.get('name') for s in root.findall(".//script/resource")]
+        details['Scripts_In_iFlow'] = ", ".join(scripts) if scripts else "None"
+
+        # 5. Mapping File (If a Message Mapping is used)
+        mapping = root.find(".//messageMapping/resource")
+        details['Mapping_Resource'] = mapping.get('name') if mapping is not None else "None (Groovy/XSLT only)"
+
+        return "\n".join([f"{k}: {v}" for k, v in details.items()])
+
+    except ET.ParseError as e:
+        print(f"ERROR: Failed to parse iFlow XML. Check if the file is valid XML: {e}")
+        return f"ERROR: Could not parse iFlow XML. Detail: {e}"
+    except Exception as e:
+        print(f"ERROR during custom XML analysis: {e}")
+        return f"ERROR: Failed during detail extraction. Detail: {e}"
+
+
 def read_iflow_source_data(file_path):
-    """Reads the raw iFlow XML content from the repository."""
+    """Reads the raw iFlow XML content and returns it for parsing."""
     absolute_path = os.path.join(GITHUB_WORKSPACE_ROOT, file_path)
     try:
-        if not os.path.exists(absolute_path):
-            print(f"FATAL ERROR: iFlow XML file not found at {absolute_path}. Check the file name and path.")
-            sys.exit(1)
-
         with open(absolute_path, 'r', encoding='utf-8') as f:
             return f.read()
             
     except Exception as e:
-        print(f"ERROR reading iFlow XML source data: {e}")
+        print(f"FATAL ERROR: Could not read iFlow XML file at {absolute_path}. Check path and permissions: {e}")
         sys.exit(1)
 
 
@@ -101,27 +137,28 @@ def main():
         print("FATAL ERROR: Required environment variables (inputs/workspace/API Key) are missing.")
         sys.exit(1)
 
-    # 2. Read Template Content
+    # 2. Read Template Content and Raw XML
     template_content = extract_text_from_docx(DOCX_TEMPLATE_PATH)
+    raw_iflow_xml = read_iflow_source_data(RELATIVE_IFLOW_SOURCE_PATH)
 
-    # 3. Read Dynamic iFlow Source Data (The key fix)
-    print(f"Attempting to read iFlow XML source data from: {RELATIVE_IFLOW_SOURCE_PATH}")
-    INTEGRATION_SOURCE_DATA = read_iflow_source_data(RELATIVE_IFLOW_SOURCE_PATH)
+    # 3. --- CRITICAL NEW STEP: PARSE THE XML ---
+    print(f"DEBUG: Attempting to parse XML for analysis...")
+    INTEGRATION_SOURCE_DATA = parse_iflow_xml(raw_iflow_xml)
 
-    # 4. Construct the Prompt (Uses the dynamically loaded XML content)
+    # 4. Construct the Prompt (Uses the dynamically loaded content)
     context_str = json.dumps(PROJECT_CONTEXT, indent=2)
     prompt = (
-        "**INSTRUCTIONS:**\n"
-        "1. **DO NOT** output the 'Table of Contents', 'References', or 'Sign-off' sections.\n"
-        "2. Analyze the following iFlow XML/configuration and the high-level context.\n"
-        "3. Generate the document body starting from **1. Introduction**, filling the template "
-        "with specific technical details derived from the XML (e.g., endpoints, scripting logic, mail receivers, security).\n"
+        "You are an expert SAP CPI Technical Writer. Your task is to generate the "
+        "document body in **clean HTML** format. **Use the ANALYZED DATA provided below** "
+        "to fill in the specifics for the data flow, security, and error handling sections.\n\n"
         
-        f"--- HIGH-LEVEL CONTEXT ---\n{context_str}\n\n"
+        "--- HIGH-LEVEL CONTEXT ---\n{context_str}\n\n"
         
-        f"--- IF LOW XML / CONFIGURATION (Analyze this content) ---\n{INTEGRATION_SOURCE_DATA}\n\n"
+        "--- IF LOW ANALYZED DATA (USE THIS CLEAN SUMMARY) ---\n{INTEGRATION_SOURCE_DATA}\n\n"
         
-        f"--- DOCUMENT TEMPLATE TEXT ---\n{template_content}\n"
+        "--- DOCUMENT TEMPLATE TEXT ---\n{template_content}\n\n"
+        
+        "Generate the complete document body starting from **1. Introduction**."
     )
     
     # 5. Generate Document Body 
