@@ -10,7 +10,7 @@ INPUT_PACKAGE_NAME = os.environ.get("INPUT_PACKAGE_NAME")
 INPUT_IFLOW_NAME = os.environ.get("INPUT_IFLOW_NAME")
 
 # *** PATHS *** (Relative to the .github/workflows/ directory)
-DOCX_TEMPLATE_PATH = '../assets/project_template.docx' 
+DOCX_TEMPLATE_PATH = '../../assets/project_template.docx' 
 OUTPUT_DIR = f'../cpi-artifacts/{INPUT_PACKAGE_NAME}/{INPUT_IFLOW_NAME}/'
 OUTPUT_FILENAME = f'{INPUT_IFLOW_NAME}_Technical_Spec_Body.html'
 
