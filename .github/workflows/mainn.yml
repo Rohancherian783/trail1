@@ -49,21 +49,35 @@ jobs:
       - name: 💾 Commit Generated Document
         if: success()
         run: |
-          # Change back to the repository root for Git operations
+          # 1. Change back to the repository root for Git operations
           cd $GITHUB_WORKSPACE 
           
           # Use the inputs to define the commit variables
           PACKAGE_NAME=${{ github.event.inputs.package_name }}
           IFLOW_NAME=${{ github.event.inputs.iflow_name }}
 
+          # Define the exact output path to ensure git can find the file
+          OUTPUT_PATH="cpi-artifacts/${PACKAGE_NAME}/${IFLOW_NAME}/${IFLOW_NAME}_Technical_Spec_Body.html"
+          
+          # --- DEBUG AND CRITICAL FILE CHECK ---
+          if [ -f "$OUTPUT_PATH" ]; then
+            echo "✅ Output file confirmed at: $OUTPUT_PATH"
+          else
+            echo "❌ ERROR: Output file NOT found at: $OUTPUT_PATH"
+            # Exit 1 to stop the workflow if the file is missing
+            exit 1 
+          fi
+          
+          # 2. Stage the file
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           
-          # Add the specific directory path based on user input
-          git add cpi-artifacts/${PACKAGE_NAME}/${IFLOW_NAME}/ 
+          # Stage the specific file path
+          git add "$OUTPUT_PATH"
           
+          # 3. Check and Commit
           if git diff --staged --quiet; then
-            echo "No changes detected. Skipping commit."
+            echo "No changes detected (file was already present and identical). Skipping commit."
           else
             git commit -m "🤖 DOCS: Automated Technical Spec for Package: ${PACKAGE_NAME} / iFlow: ${IFLOW_NAME}"
             git push
