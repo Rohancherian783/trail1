@@ -1,14 +1,22 @@
 name: 📝 Automated Technical Specification Generator (OpenAI)
 
 on:
-  # Allows you to manually trigger the workflow from the GitHub Actions tab
   workflow_dispatch:
-
+    inputs:
+      package_name:
+        description: 'SAP CPI Package Name (Used for the output folder)'
+        required: true
+        default: 'PDFcoveter'
+      iflow_name:
+        description: 'Main iFlow Name (Used for the output file and document content)'
+        required: true
+        default: 'Task1'
+      
 jobs:
   generate_document:
     runs-on: ubuntu-latest
 
-    # *** CRITICAL: Set the working directory to where your script and requirements are ***
+    # Set the working directory to where your script and requirements are
     defaults:
       run:
         working-directory: .github/workflows 
@@ -25,16 +33,17 @@ jobs:
           python-version: '3.x'
 
       - name: 📦 Install Python Dependencies
-        # Installs requirements.txt which is located in the working directory
         run: pip install -r requirements.txt 
           
       - name: 🔑 Configure AI API Key
-        # Loads your secret OPENAI_API_KEY into the environment
         run: echo "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}" >> $GITHUB_ENV
 
       - name: 🚀 Run Document Generation Script
         id: generate
-        # Runs doc_generator.py which is located in the working directory
+        env:
+          # Pass the manually entered inputs as environment variables
+          INPUT_PACKAGE_NAME: ${{ github.event.inputs.package_name }}
+          INPUT_IFLOW_NAME: ${{ github.event.inputs.iflow_name }}
         run: python doc_generator.py 
 
       - name: 💾 Commit Generated Document
@@ -43,17 +52,20 @@ jobs:
           # Change back to the repository root for Git operations
           cd $GITHUB_WORKSPACE 
           
+          # Use the inputs to define the commit variables
+          PACKAGE_NAME=${{ github.event.inputs.package_name }}
+          IFLOW_NAME=${{ github.event.inputs.iflow_name }}
+
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           
-          # Add the output directory path (which is relative to the repository root)
-          git add cpi-artifacts/ 
+          # Add the specific directory path based on user input
+          git add cpi-artifacts/${PACKAGE_NAME}/${IFLOW_NAME}/ 
           
-          # Check if there are any changes to commit (prevents pushing empty commits)
           if git diff --staged --quiet; then
-            echo "No changes detected in cpi-artifacts/. Skipping commit."
+            echo "No changes detected. Skipping commit."
           else
-            git commit -m "🤖 DOCS: Automated Technical Spec for Task1"
+            git commit -m "🤖 DOCS: Automated Technical Spec for Package: ${PACKAGE_NAME} / iFlow: ${IFLOW_NAME}"
             git push
             echo "Successfully committed and pushed new document."
           fi
