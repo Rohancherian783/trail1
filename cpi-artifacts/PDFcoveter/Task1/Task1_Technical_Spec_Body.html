@@ -1,0 +1,155 @@
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Tech Specification Project</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            margin: 20px;
+        }
+        h1, h2, h3, h4 {
+            color: #2c3e50;
+        }
+        h1 {
+            font-size: 24px;
+        }
+        h2 {
+            font-size: 20px;
+            margin-top: 20px;
+        }
+        h3 {
+            font-size: 18px;
+            margin-top: 15px;
+        }
+        h4 {
+            font-size: 16px;
+            margin-top: 10px;
+        }
+        ul {
+            margin: 10px 0;
+            padding-left: 20px;
+        }
+        code {
+            background-color: #f4f4f4;
+            padding: 2px 4px;
+            border-radius: 4px;
+        }
+        pre {
+            background-color: #f4f4f4;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+
+<h1>AI Tech Specification Project</h1>
+
+<h2>Table of Contents</h2>
+<ol>
+    <li><a href="#introduction">Introduction</a>
+        <ol>
+            <li><a href="#purpose">Purpose</a></li>
+            <li><a href="#scope">Scope</a></li>
+        </ol>
+    </li>
+    <li><a href="#integration-overview">Integration Overview</a>
+        <ol>
+            <li><a href="#integration-architecture">Integration Architecture</a></li>
+            <li><a href="#integration-components">Integration Components</a></li>
+        </ol>
+    </li>
+    <li><a href="#integration-scenarios">Integration Scenarios</a>
+        <ol>
+            <li><a href="#scenario-description">Scenario Description</a></li>
+            <li><a href="#data-flows">Data Flows</a></li>
+            <li><a href="#security-requirements">Security Requirements</a></li>
+        </ol>
+    </li>
+    <li><a href="#error-handling">Error Handling and Logging</a></li>
+    <li><a href="#testing-validation">Testing Validation</a></li>
+    <li><a href="#reference-documents">Reference Documents</a></li>
+</ol>
+
+<h2 id="revision-history">Revision History</h2>
+<p>Please keep the latest version on top.</p>
+
+<h2 id="references">References</h2>
+<p>Reader should read this document in conjunction with the following documents.</p>
+
+<h2>Sign off - Technical Specification</h2>
+
+<h2 id="introduction">1. Introduction</h2>
+
+<h3 id="purpose">1.1 Purpose</h3>
+<p>This document provides a detailed explanation of the solution as conceptualized or proposed to the requirements as laid down in solution architecture and mapping sheet.</p>
+
+<h3 id="scope">1.2 Scope</h3>
+<p>The FS outlines the data flows, integration touchpoints, mapping rules, and business scenarios required to support consistent identity management and preference synchronization. SCv2 will serve as the source of sales-related customer data, ensuring that accurate and up-to-date information is made available in CDC to support marketing activities, consent management, and personalized engagement across digital channels.</p>
+
+<h2 id="integration-overview">2. Integration Overview</h2>
+
+<h3 id="integration-architecture">2.1 Integration Architecture</h3>
+<p>The integration architecture is illustrated in the diagram below.</p>
+<p><strong>Architecture Diagram:</strong></p>
+
+<h3 id="integration-components">2.2 Integration Components</h3>
+<p>Details of integration components will be provided here.</p>
+
+<h2 id="integration-scenarios">3. Integration Scenarios</h2>
+
+<h3 id="scenario-description">3.1 Scenario Description</h3>
+<p>The following screenshots and supporting documents illustrate the integration scenario:</p>
+
+<h3 id="data-flows">3.2 Data Flow</h3>
+<p>PFB the details of the integration flow implemented [Package and Iflow Details].</p>
+<ul>
+    <li>Iflow 1 - <a href="https://www.webtoolkitonline.com/xml-formatter.html">Iflow 1 Link</a></li>
+    <li>Iflow 2 - <a href="https://www.webtoolkitonline.com/xml-formatter.html">Iflow 2 Link</a></li>
+</ul>
+<p>Data Mapping – Sheet: Mapping sheet</p>
+
+<h3 id="security-requirements">3.3 Security Requirement</h3>
+<p>Authorization used in the interface is listed below:</p>
+<ul>
+    <li>API Domain: <code>https://accounts.eu1./</code></li>
+    <li>userkey and secret (Please reach out to CDC team for this)</li>
+    <li>APIKey (Dev): <code>XX</code></li>
+</ul>
+<p>Postman collection details will be provided here.</p>
+
+<h2 id="error-handling">4. Error Handling and Logging</h2>
+<p>Error details are handled in the exception subprocess and the details are mentioned in the screenshot below:</p>
+<p>This section contains scripts, logs, and screenshots related to error handling and monitoring.</p>
+
+<h4>Script: Logging.groovy</h4>
+<pre><code>def sanitize(value) {
+    value.replaceAll(/(?i)"password"\s*:\s*".*?"/, '"password":"***"')
+         .replaceAll(/(?i)"token"\s*:\s*".*?"/, '"token":"***"')
+}
+def payload = '''{
+  "username": "admin",
+  "password": "mysecret",
+  "token": "12345"
+}'''
+println sanitize(payload)</code></pre>
+
+<h2 id="testing-validation">5. Testing Validation</h2>
+<p>This section contains test evidence, results, and UAT sign-off details.</p>
+<p>Testing Details – Sheet: Testing</p>
+<p>UAT Sign Off Attached</p>
+
+<h2 id="reference-documents">6. Reference</h2>
+<ul>
+    <li>Mapping 1</li>
+    <li>Mapping 2</li>
+</ul>
+
+</body>
+</html>
+```
