@@ -128,12 +128,15 @@ jobs:
                 # --- END LOGO SETUP ---
 
                 # 1. SAP Logo Block Definition (Used on Left Side)
+                # FIX: Quoted
                 SAP_LOGO_BLOCK="<div style=\"float: left; text-align: left;\"><img src=\"$SAP_LOGO_URL\" alt=\"SAP Logo\" width=\"150\" height=\"60\"/></div>"
                 
                 # 2. BASE HEADER BLOCK DEFINITION (Combined logos for all pages)
+                # FIX: Quoted
                 BASE_LOGO_HEADER="${SAP_LOGO_BLOCK}<div style=\"float: right; text-align: right;\"><img src=\"$MOTIVEMINDS_LOGO_URL\" alt=\"motiveminds Logo\" width=\"150\" height=\"55\" style=\"margin-top: 5px;\"/></div><div style=\"clear: both;\"></div>"
                 
                 # 4. COVER PAGE CONTENT (Page 1) - Uses BASE_LOGO_HEADER at the top
+                # FIX: Quoted. Line by line additions are implicitly quoted.
                 COVER_PAGE_CONTENT="${BASE_LOGO_HEADER}\n" # Logos on Page 1
                 COVER_PAGE_CONTENT+="<div style=\"height: 80px;\"></div>"
                 COVER_PAGE_CONTENT+="<h1 style=\"color: ${{ env.HEADING_COLOR }}; font-size: 3em; text-align: center; margin-top: 5px; margin-bottom: 5px;\">$CLEAN_IFLOW_NAME</h1>"
@@ -152,8 +155,10 @@ jobs:
                 # Hard Page Break after cover (P1), then inject the BASE_LOGO_HEADER for the TOC page (P2)
                 
                 # FIX 2: Add extra div and blank lines before TOC to isolate and remove potential "markdown" residue.
+                # FIX: Quoted
                 ISOLATION_DIV="<div style=\"height: 50px;\"></div>\n\n\n\n"
                 
+                # FIX: The concatenation must be quoted or escaped
                 FULL_DOCUMENTATION="${COVER_PAGE_CONTENT}<div style=\"page-break-after: always;\"></div>\n\n${BASE_LOGO_HEADER}\n${ISOLATION_DIV}${GENERATED_TEXT}"
                                 
                 # 6. Inject Page Break: TOC Page 2 -> Introduction Page 3
@@ -166,6 +171,7 @@ jobs:
                 
                 
                 # Output the final document
+                # FIX: Ensure final output is quoted
                 echo -e "$FULL_DOCUMENTATION" > "$OUTPUT_FILE"
                 echo "  💾 Saved documentation with clean metadata, isolated TOC, and improved list prompts to $OUTPUT_FILE"
                 ALL_DOCS_GENERATED=true
