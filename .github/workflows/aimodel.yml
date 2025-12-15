@@ -114,7 +114,7 @@ jobs:
               
               if [ "$GENERATED_TEXT" != "null" ] && [ -n "$GENERATED_TEXT" ]; then
                 echo "  ✅ Documentation generated successfully."
-                # --- START DOCUMENT ASSEMBLY USING HERE DOCUMENT (EOF) ---
+                # --- START DOCUMENT ASSEMBLY ---
                 
                 # DYNAMIC METADATA COLLECTION
                 AUTHOR=$(git log -1 --pretty=format:'%an')
@@ -123,20 +123,19 @@ jobs:
                 CLEAN_IFLOW_NAME=$(echo "$IFLOW_NAME" | sed 's/_/ /g')
                 
                 # --- LOGO SETUP ---
-                # NOTE: These variables are simple assignments and are safe.
                 SAP_LOGO_URL="https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/sap_logo.png"
                 MOTIVEMINDS_LOGO_URL="https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/motiveminds_logo.png"
                 
-                # 1. SAP Logo Block Definition (Used on Left Side)
+                # 1. SAP Logo Block Definition
                 SAP_LOGO_BLOCK="<div style=\"float: left; text-align: left;\"><img src=\"$SAP_LOGO_URL\" alt=\"SAP Logo\" width=\"150\" height=\"60\"/></div>"
                 
-                # 2. BASE HEADER BLOCK DEFINITION (Combined logos for all pages)
+                # 2. BASE HEADER BLOCK DEFINITION
                 BASE_LOGO_HEADER="${SAP_LOGO_BLOCK}<div style=\"float: right; text-align: right;\"><img src=\"$MOTIVEMINDS_LOGO_URL\" alt=\"motiveminds Logo\" width=\"150\" height=\"55\" style=\"margin-top: 5px;\"/></div><div style=\"clear: both;\"></div>"
                 
-                # 3. Create the entire Cover Page content using a Here Document.
-                # This ensures the shell interprets the lines correctly and avoids the "command not found" error.
-                # We also apply the Metadata table fix (using <strong> instead of **).
-                COVER_PAGE_CONTENT=$(cat << EOF
+                # 3. Create the entire Cover Page content using a Here Document (COVER_EOF).
+                # This fixes the shell execution errors (e.g., 'assets: command not found').
+                # It also includes the fix for the metadata table (using <strong>).
+                COVER_PAGE_CONTENT=$(cat << 'COVER_EOF'
 ${BASE_LOGO_HEADER}
 
 <div style="height: 80px;"></div>
@@ -151,26 +150,26 @@ ${BASE_LOGO_HEADER}
 </table>
 </div>
 
-EOF
+COVER_EOF
 )
                 # 4. Assemble the Full Document Content (P1 -> PB -> P2/TOC -> PB -> P3/Intro)
-                # Use a second Here Document to combine P1 content, the hard page break, and the P2 content.
-                # The ISOLATION_DIV is created inline here.
-                FULL_DOCUMENTATION=$(cat << EOF_DOC
-$COVER_PAGE_CONTENT
-<div style="page-break-after: always;"></div>
+                # The single quotes around 'COVER_EOF' stop bash from trying to expand variables 
+                # inside the HereDoc before assignment. Now we manually expand the variables:
+                COVER_PAGE_CONTENT=$(echo "$COVER_PAGE_CONTENT" | sed \
+                  -e "s|\${BASE_LOGO_HEADER}|$BASE_LOGO_HEADER|g" \
+                  -e "s|\${{ env.HEADING_COLOR }}|${{ env.HEADING_COLOR }}|g" \
+                  -e "s|\$CLEAN_IFLOW_NAME|$CLEAN_IFLOW_NAME|g" \
+                  -e "s|\$AUTHOR|$AUTHOR|g" \
+                  -e "s|\$DATE|$DATE|g" \
+                  -e "s|\$VERSION|$VERSION|g")
 
-${BASE_LOGO_HEADER}
-<div style="height: 50px;"></div>
+                # Set isolation div (Fix for unwanted 'markdown' text on TOC page)
+                ISOLATION_DIV="<div style=\"height: 50px;\"></div>\n\n\n\n"
 
-
-
-${GENERATED_TEXT}
-EOF_DOC
-)
-                
+                # Combine all parts safely using shell quoting
+                FULL_DOCUMENTATION="${COVER_PAGE_CONTENT}\n<div style=\"page-break-after: always;\"></div>\n\n${BASE_LOGO_HEADER}\n${ISOLATION_DIV}\n${GENERATED_TEXT}"
+                                
                 # 5. Inject Page Break: TOC Page 2 -> Introduction Page 3
-                # Hard Page Break to start Section 1 (P3) with the logo header.
                 PAGE_BREAK_AND_HEADER_TOC_TO_SECTION1="\n<div style=\"page-break-before: always;\"></div>\n${BASE_LOGO_HEADER}\n"
                 ESCAPED_PBH_TOC=$(echo -n "$PAGE_BREAK_AND_HEADER_TOC_TO_SECTION1" | sed 's/[\/&]/\\&/g') # Escape for sed
                 
