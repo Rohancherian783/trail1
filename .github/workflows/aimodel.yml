@@ -40,138 +40,115 @@ jobs:
             exit 1
           fi
 
-          # --- Comprehensive System Prompt ---
-          # This ensures the AI follows your 6-point structure and uses the correct HTML styles.
-          SYSTEM_PROMPT="You are a senior SAP CPI Technical Architect. Your task is to analyze ALL provided code and configuration files and synthesize them into ONE consolidated technical report. 
+          # --- RESTORED FULL TECHNICAL PROMPT ---
+          SYSTEM_PROMPT="You are a senior SAP CPI Technical Architect. Your task is to analyze ALL provided code and configuration files from the SINGLE iFlow provided and synthesize them into ONE consolidated technical report. You MUST adhere strictly to the following 6-point structure. 
           
-          CRITICALLY: 
-          1. Use ONLY inline HTML for headings: <h1 style=\"color: ${{ env.HEADING_COLOR }};\">1. Introduction</h1>.
-          2. Start with a Table of Contents (TOC). 
-          3. Use <br> after every TOC list item.
-          4. End the TOC section with the exact marker '---TOC-END-PAGE-BREAK---'.
+          CRITICALLY: You MUST ONLY use inline HTML tags for all headings (H1 and H2) to ensure the dark blue color ('${{ env.HEADING_COLOR }}') is applied. DO NOT use Markdown (#) syntax for main headings.
           
-          Structure your report with these sections:
-          1. Introduction (Purpose & Scope)
-          2. Integration Overview (Architecture & Components) - Use a Mermaid 'graph TD' block for the flow.
-          3. Integration Scenarios (Step-by-step description & Data Flows)
-          4. Error Handling and Logging
-          5. Testing Validation
-          6. Reference Documents"
+          **MANDATORY FIRST SECTION: TABLE OF CONTENTS (TOC) PAGE**
+          The very first output MUST be the Table of Contents. Format the TOC heading as: <h1 style=\"color: ${{ env.HEADING_COLOR }}; font-size: 2.5em;\">Table of Contents</h1>. 
+          List all 6 sections. After every single list item, you MUST insert the HTML tag <br> for line spacing. 
+          Add the unique marker '---TOC-END-PAGE-BREAK---' on its own line after the TOC.
+
+          **REQUIRED SECTIONS (Use Styled HTML Headings):**
+          <h1 style=\"color: ${{ env.HEADING_COLOR }};\">1. Introduction</h1>
+          1.1 Purpose, 1.2 Scope.
+          
+          <h1 style=\"color: ${{ env.HEADING_COLOR }};\">2. Integration Overview</h1>
+          2.1 Integration Architecture (Use Mermaid 'graph TD' block here).
+          2.2 Integration Components (Sender/Receiver systems + Adapters).
+          
+          <h1 style=\"color: ${{ env.HEADING_COLOR }};\">3. Integration Scenarios</h1>
+          3.1 Scenario Description (Step-by-step logic).
+          3.2 Data Flows (Mapping logic, XSLT, and Groovy script explanations).
+          3.3 Security Requirements (Credentials and Auth mechanisms).
+          
+          <h1 style=\"color: ${{ env.HEADING_COLOR }};\">4. Error Handling and Logging</h1>
+          
+          <h1 style=\"color: ${{ env.HEADING_COLOR }};\">5. Testing Validation</h1>
+          
+          <h1 style=\"color: ${{ env.HEADING_COLOR }};\">6. Reference Documents</h1> (List analyzed files like iFlowContent.xml, scripts, etc.)"
 
           ALL_DOCS_GENERATED=false
 
-          # 1. Safely find directories containing iFlow definition files
-          find "$BASE_PKG_DIR" -type f \( -name 'iFlowContent.xml' -o -name '*.iflw' \) -printf '%h\n' | sort -u | while IFS= read -r IFLOW_DIR; do
+          # 1. Safely find directories
+          while IFS= read -r IFLOW_DIR; do
             
-            # Determine names and paths
             IFLOW_ROOT_NAME=$(echo "$IFLOW_DIR" | sed "s|^$BASE_PKG_DIR/||" | cut -d/ -f1)
             FINAL_IFLOW_DIR="$BASE_PKG_DIR/$IFLOW_ROOT_NAME"
             OUTPUT_FILE="$FINAL_IFLOW_DIR/${IFLOW_ROOT_NAME}_Summary.md"
             
             echo "🚀 Processing iFlow: $IFLOW_ROOT_NAME"
             
-            # --- FIX: Handle Large Content via Temporary Query File ---
             QUERY_FILE="user_query.tmp"
-            echo -e "Synthesize a consolidated technical report for the iFlow '$IFLOW_ROOT_NAME' using the following source artifacts:\n" > "$QUERY_FILE"
+            echo -e "Synthesize a consolidated technical report for iFlow '$IFLOW_ROOT_NAME'.\n\nSource Artifacts:\n" > "$QUERY_FILE"
 
-            # Gather all relevant source files (Groovy, XSLT, XML)
-            find "$IFLOW_DIR" -type f \( -name 'iFlowContent.xml' -o -name '*.groovy' -o -name '*.xslt' -o -name '*.iflw' \) -print0 | while IFS= read -r -d '' INPUT_FILE; do
+            while IFS= read -r -d '' INPUT_FILE; do
               echo -e "\n\n--- START ARTIFACT: $INPUT_FILE ---\n" >> "$QUERY_FILE"
               cat "$INPUT_FILE" >> "$QUERY_FILE"
               echo -e "\n--- END ARTIFACT: $INPUT_FILE ---\n" >> "$QUERY_FILE"
-            done
+            done < <(find "$IFLOW_DIR" -type f \( -name 'iFlowContent.xml' -o -name '*.groovy' -o -name '*.xslt' -o -name '*.iflw' \) -print0)
 
-            # --- FIX: Create Payload JSON using --rawfile to avoid "Argument list too long" ---
             PAYLOAD_FILE="payload.json"
-            jq -n \
-              --arg system "$SYSTEM_PROMPT" \
-              --rawfile query "$QUERY_FILE" \
-              --arg model "$MODEL_NAME" \
-              '{
-                model: $model, 
-                messages: [
-                  {role: "system", content: $system}, 
-                  {role: "user", content: $query}
-                ], 
-                temperature: 0.1
-              }' > "$PAYLOAD_FILE"
+            jq -n --arg system "$SYSTEM_PROMPT" --rawfile query "$QUERY_FILE" --arg model "$MODEL_NAME" \
+              '{model: $model, messages: [{role: "system", content: $system}, {role: "user", content: $query}], temperature: 0.1}' > "$PAYLOAD_FILE"
 
-            # 2. API Call with Retry Logic
+            # 2. API Call with Retry
             RETRY_COUNT=0
             while [ "$RETRY_COUNT" -lt 3 ]; do
-              API_RESPONSE=$(curl -s -X POST "$API_URL" \
-                -H "Content-Type: application/json" \
-                -H "Authorization: Bearer $OPENAI_API_KEY" \
-                -d @"$PAYLOAD_FILE") # Read payload from file
-
+              API_RESPONSE=$(curl -s -X POST "$API_URL" -H "Content-Type: application/json" -H "Authorization: Bearer $OPENAI_API_KEY" -d @"$PAYLOAD_FILE")
               GENERATED_TEXT=$(echo "$API_RESPONSE" | jq -r ".choices[0].message.content // empty")
 
               if [ -n "$GENERATED_TEXT" ] && [ "$GENERATED_TEXT" != "null" ]; then
-                # Clean up Markdown code block wrappers if AI included them
                 GENERATED_TEXT_CLEANED=$(echo -e "$GENERATED_TEXT" | sed -E '1s/^\s*```(markdown|text)?//' | sed -E '$s/\s*```\s*$//')
                 
-                # Gather Metadata for Cover Page
+                # Metadata
                 AUTHOR=$(git log -1 --pretty=format:'%an')
                 DATE=$(date +'%Y-%m-%d')
                 VERSION=$(git rev-parse --short HEAD)
                 CLEAN_NAME=$(echo "$IFLOW_ROOT_NAME" | sed 's/_/ /g')
-
-                # Asset URLs and Header Formatting
+                
                 SAP_LOGO="https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/sap_logo.png"
                 MM_LOGO="https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/motiveminds_logo.png"
-                
                 LOGO_HEADER="<div style=\"float: left;\"><img src=\"$SAP_LOGO\" width=\"150\" height=\"60\"/></div><div style=\"float: right;\"><img src=\"$MM_LOGO\" width=\"150\" height=\"55\"/></div><div style=\"clear: both;\"></div>"
                 
-                # 3. Assemble Final Markdown Document
-                # Cover Page (P1)
-                COVER_PAGE="${LOGO_HEADER}<div style=\"height: 100px;\"></div>"
-                COVER_PAGE+="<h1 style=\"color: ${{ env.HEADING_COLOR }}; font-size: 3em; text-align: center;\">$CLEAN_NAME</h1>"
-                COVER_PAGE+="<h2 style=\"text-align: center;\">SAP CPI Technical Specification</h2>"
-                COVER_PAGE+="<div style=\"height: 120px;\"></div>"
-                COVER_PAGE+="<div style=\"text-align: center;\"><table border=\"1\" style=\"width: 350px; margin: 0 auto; border-collapse: collapse;\">"
-                COVER_PAGE+="<tr><td style=\"padding: 8px;\"><b>Author:</b></td><td style=\"padding: 8px;\">$AUTHOR</td></tr>"
-                COVER_PAGE+="<tr><td style=\"padding: 8px;\"><b>Date:</b></td><td style=\"padding: 8px;\">$DATE</td></tr>"
-                COVER_PAGE+="<tr><td style=\"padding: 8px;\"><b>Version:</b></td><td style=\"padding: 8px;\">$VERSION</td></tr></table></div>"
+                COVER_PAGE="${LOGO_HEADER}<div style=\"height: 80px;\"></div><h1 style=\"color: ${{ env.HEADING_COLOR }}; text-align: center; font-size: 3em;\">$CLEAN_NAME</h1>"
+                COVER_PAGE+="<h2 style=\"text-align: center;\">Technical Specification Document</h2>"
+                COVER_PAGE+="<div style=\"height: 100px;\"></div><div style=\"text-align: center;\"><table border=\"1\" style=\"margin: 0 auto; border-collapse: collapse;\">"
+                COVER_PAGE+="<tr><td style=\"padding: 10px;\"><b>Author</b></td><td style=\"padding: 10px;\">$AUTHOR</td></tr>"
+                COVER_PAGE+="<tr><td style=\"padding: 10px;\"><b>Date</b></td><td style=\"padding: 10px;\">$DATE</td></tr>"
+                COVER_PAGE+="</table></div>"
                 
-                # Combine Cover, Logos, and Content
                 FINAL_DOC="${COVER_PAGE}<div style=\"page-break-after: always;\"></div>\n\n${LOGO_HEADER}\n${GENERATED_TEXT_CLEANED}"
                 
-                # Inject Page Break after TOC (Marker replacement)
+                # Handle Page Break for TOC marker
                 SECTION_BREAK="\n<div style=\"page-break-before: always;\"></div>\n${LOGO_HEADER}\n"
                 FINAL_DOC=$(echo -e "$FINAL_DOC" | sed "s|---TOC-END-PAGE-BREAK---|$(echo "$SECTION_BREAK" | sed 's/[&/]/\\&/g')|g")
 
-                # Save the result
                 echo -e "$FINAL_DOC" > "$OUTPUT_FILE"
-                echo "✅ Documentation saved to $OUTPUT_FILE"
                 ALL_DOCS_GENERATED=true
+                echo "✅ Documentation generated for $IFLOW_ROOT_NAME"
                 break
               else
-                ERROR_INFO=$(echo "$API_RESPONSE" | jq -r ".error.message // \"Unknown error\"")
-                echo "⚠️ Attempt $((RETRY_COUNT+1)) failed: $ERROR_INFO"
                 RETRY_COUNT=$((RETRY_COUNT + 1))
                 sleep 5
               fi
             done
-            
-            # Clean up temp files for the next iFlow in the loop
             rm -f "$QUERY_FILE" "$PAYLOAD_FILE"
-          done
+          done < <(find "$BASE_PKG_DIR" -type f \( -name 'iFlowContent.xml' -o -name '*.iflw' \) -printf '%h\n' | sort -u)
 
           echo "docs_generated=$ALL_DOCS_GENERATED" >> $GITHUB_OUTPUT
 
-      - name: Commit All Generated iFlow Documentation
+      - name: Commit and Push Documentation
         if: steps.documentation_step.outputs.docs_generated == 'true'
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           PKG_ID="${{ github.event.inputs.package_id }}"
-          
           git add "cpi-artifacts/$PKG_ID/**/*_Summary.md"
-          
           if ! git diff --cached --quiet; then
-              git commit -m "🤖 DOCS: Automated documentation update for package: $PKG_ID"
+              git commit -m "🤖 DOCS: Generated full technical specs for $PKG_ID"
               git push
-              echo "🚀 All documentation changes pushed to repository."
           else
-              echo "⏭️ No changes detected in documentation. Skipping commit."
+              echo "No changes to commit."
           fi
