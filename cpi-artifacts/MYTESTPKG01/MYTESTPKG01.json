@@ -1,0 +1,10 @@
+{
+  "d": {
+    "Id": "MYTESTPKG01",
+    "Name": "Rohan Test Integration",
+    "Description": "\u003cp\u003eA package created via MCP server\u003c/p\u003e",
+    "ShortText": "A package created via MCP server",
+    "Version": "",
+    "Mode": "EDIT_ALLOWED"
+  }
+}
