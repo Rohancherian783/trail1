@@ -1,0 +1,16 @@
+#Mon Dec 22 11:44:18 UTC 2025
+HDFC_TokenURL=https\://api.hdfcbank.com/auth/oauth/v2/token
+apikey=n0QrpjRfsXjq38zvOaibPqSwqP9iMrlJzCW3RgYHuzJNkHax
+HDFC_AuthorizationHeader=Basic bjBRcnBqUmZzWGpxMzh6dk9haWJQcVN3cVA5aU1ybEp6Q1czUmdZSHV6Sk5rSGF4OkNXTnRHcUtVUlczWkFkQzRTUG5XTElXYWJ4WlcwMm5mV3YyNTRjUE9ENmZXT255enlISllWb1RwWHdpdEc5aUg\=
+To_MailAddresses=vaishnavi.biradar@jetsynthesys.com,shripad@jetsynthesys.com,depak.gupta@jetsynthesys.com,Ashwini.Jukuru@jetsynthesys.com,nikhil.yadkikar@jetsynthesys.com,leenu.b@motiveminds.com
+HDFC_PaymentIflow_Endpoint=/S4/HDFC/PaymentUpload
+HDFC_ClientCertificate=sap_cloudintegrationcertificate
+HDFC_LOGIN_ID=APIUSER
+Mail_Credential=JetsynthesysMail
+Subject_Errormail=ErrorDetails\:JetSynthesys\:HDFC_PaymentUpload
+HDFC_ScopeValue=JETPHYCX
+HDFC_API_Authentication=Client Certificate
+HDFC_PaymentAPI=https\://api.hdfcbank.com/API/CBX_InitiatePayment
+Subject_PaymentStatus=Jetsynthesys\:HDFC\:PaymentStatus
+MailServer_Address=smtp.office365.com\:587
+From_MailAddress=sapbankintegration@jetsynthesys.com

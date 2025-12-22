@@ -1,0 +1,25 @@
+<xs:schema attributeFormDefault="unqualified" elementFormDefault="qualified" xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:element name="root">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element type="xs:string" name="LOGIN_ID"/>
+        <xs:element type="xs:string" name="INPUT_GCIF"/>
+        <xs:element type="xs:string" name="TRANSFER_TYPE_DESC"/>
+        <xs:element type="xs:string" name="BENE_BANK"/>
+        <xs:element type="xs:short" name="INPUT_DEBIT_AMOUNT"/>
+        <xs:element type="xs:string" name="INPUT_VALUE_DATE"/>
+        <xs:element type="xs:string" name="TRANSACTION_TYPE"/>
+        <xs:element type="xs:long" name="INPUT_DEBIT_ORG_ACC_NO"/>
+        <xs:element type="xs:string" name="INPUT_BUSINESS_PROD"/>
+        <xs:element type="xs:int" name="BENE_ID"/>
+        <xs:element type="xs:string" name="BENE_ACC_NAME"/>
+        <xs:element type="xs:long" name="BENE_ACC_NO"/>
+        <xs:element type="xs:string" name="BENE_TYPE"/>
+        <xs:element type="xs:string" name="BENE_BRANCH"/>
+        <xs:element type="xs:string" name="BENE_IDN_CODE"/>
+        <xs:element type="xs:string" name="EMAIL_ADDR_VIEW"/>
+        <xs:element type="xs:long" name="PAYMENT_REF_NO"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

@@ -1,0 +1,25 @@
+#Mon Dec 22 11:44:18 UTC 2025
+From_MailId=sapbankintegration@jetsynthesys.com
+HDFC_BalanceUpdate_Scheduler=<row><cell>dayValue</cell><cell></cell></row><row><cell>monthValue</cell><cell></cell></row><row><cell>yearValue</cell><cell></cell></row><row><cell>dateType</cell><cell>DAILY</cell></row><row><cell>secondValue</cell><cell>0</cell></row><row><cell>minutesValue</cell><cell></cell></row><row><cell>hourValue</cell><cell></cell></row><row><cell>toInterval</cell><cell>24</cell></row><row><cell>fromInterval</cell><cell>0</cell></row><row><cell>OnEveryMinute</cell><cell>15</cell></row><row><cell>timeType</cell><cell>TIME_INTERVAL</cell></row><row><cell>timeZone</cell><cell>( UTC 5\:30 ) India Standard Time(Asia/Calcutta)</cell></row><row><cell>throwExceptionOnExpiry</cell><cell>true</cell></row><row><cell>second</cell><cell>*</cell></row><row><cell>minute</cell><cell>*</cell></row><row><cell>hour</cell><cell>*</cell></row><row><cell>day_of_month</cell><cell>?</cell></row><row><cell>month</cell><cell>*</cell></row><row><cell>dayOfWeek</cell><cell>*</cell></row><row><cell>year</cell><cell>*</cell></row><row><cell>triggerType</cell><cell>cron</cell></row><row><cell>noOfSchedules</cell><cell>1</cell></row><row><cell>schedule1</cell><cell>0+0/15+0-23+?+*+*+*&amp;trigger.timeZone\=Asia/Calcutta</cell></row>
+serviceCode=CHAPI10906
+MailCredential=JetsynthesysMail
+channel=APIGW
+transactionBranch=089999
+HDFC_BalanceInquiryAPI=https\://api.hdfcbank.com/API/Corp_CASABalInq_Basic
+scope=JETPHYCX
+S4_Authentication=Basic
+MailServer_Address=smtp.office365.com\:587
+S4_YY1_BANKBALANCE_CDS=https\://my406814-api.s4hana.cloud.sap/sap/opu/odata/sap/YY1_BANKBALANCE_CDS
+Authorization_header=Basic bjBRcnBqUmZzWGpxMzh6dk9haWJQcVN3cVA5aU1ybEp6Q1czUmdZSHV6Sk5rSGF4OkNXTnRHcUtVUlczWkFkQzRTUG5XTElXYWJ4WlcwMm5mV3YyNTRjUE9ENmZXT255enlISllWb1RwWHdpdEc5aUg\=
+bankCode=08
+Mail_Subject=ErrorDetails\:PRD\:JetSynthesys\:HDFC_BalanceUpdate
+apikey=n0QrpjRfsXjq38zvOaibPqSwqP9iMrlJzCW3RgYHuzJNkHax
+To_MailIds=vaishnavi.biradar@jetsynthesys.com,shripad@jetsynthesys.com,depak.gupta@jetsynthesys.com,nikhil.yadkikar@jetsynthesys.com,Ashwini.Jukuru@jetsynthesys.com,leenu.b@motiveminds.com
+userId=DevUser01
+HDFC_ClientCertificate=sap_cloudintegrationcertificate
+transactingParty=115152740
+S4_Credential=S4_Credential
+S4_YY1_BANKACCOUNTDETAILS_CDS=https\://my406814-api.s4hana.cloud.sap/sap/opu/odata/sap/YY1_BANKACCOUNTDETAILS_CDS
+HDFC_Authentication=Client Certificate
+partnerId=JETPHYCX
+userReferenceNumber=8d901a9d9a934ee7a05de10edd3f8f48

@@ -1,0 +1,34 @@
+<xs:schema attributeFormDefault="unqualified" elementFormDefault="qualified" xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:element name="Payments">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="PaymentData" maxOccurs="unbounded" minOccurs="0">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element type="xs:string" name="TransactionType"/>
+              <xs:element type="xs:int" name="BeneficiaryCode"/>
+              <xs:element type="xs:long" name="BeneficiaryAcNo"/>
+              <xs:element type="xs:long" name="DebitAcNo"/>
+              <xs:element type="xs:string" name="HouseBank"/>
+              <xs:element type="xs:short" name="InstrumentAmount"/>
+               <xs:element type="xs:short" name="Currency"/>
+              <xs:element type="xs:string" name="BeneficiaryName"/>
+              <xs:element type="xs:string" name="BeneAddressStreet"/>
+              <xs:element type="xs:string" name="BeneAddressCity"/>
+              <xs:element type="xs:int" name="BeneAddresspostalCode"/>
+              <xs:element type="xs:string" name="Country"/>
+              <xs:element type="xs:string" name="InstructionReferenceNumber"/>
+              <xs:element type="xs:string" name="Date"/>
+              <xs:element type="xs:string" name="IFCCode"/>
+              <xs:element type="xs:string" name="BeneBranch"/>
+              <xs:element type="xs:string" name="BeneBankName"/>
+              <xs:element type="xs:long" name="ReferenceNo"/>
+               <xs:element type="xs:long" name="CompanyCode"/>
+              <xs:element type="xs:long" name="BeneMailId"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>
