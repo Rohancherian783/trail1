@@ -40,40 +40,50 @@ jobs:
             exit 1
           fi
 
-          # --- UPDATED SYSTEM PROMPT WITH YOUR TOC ---
-          [cite_start]SYSTEM_PROMPT="You are a senior SAP CPI Technical Architect. Your task is to analyze ALL provided code and configuration files from the SINGLE iFlow provided and synthesize them into ONE consolidated technical report. You MUST adhere strictly to the following 6-point structure[cite: 75]:
-          
-          CRITICALLY: 
-          1. Use ONLY inline HTML for headings (H1 and H2) in color '${{ env.HEADING_COLOR }}'. 
-          2. For Section 2.1, you MUST use a Mermaid 'graph TD' block. 
-          3. IMPORTANT: Every Mermaid line MUST be on a new line. Do not put the entire diagram on one line.
-          
-          [cite_start]**MANDATORY FIRST SECTION: TABLE OF CONTENTS (TOC) PAGE** [cite: 75]
-          1. [cite_start]Introduction [cite: 76]
-          2. [cite_start]Integration Overview [cite: 79]
-          3. [cite_start]Integration Scenarios [cite: 82]
-          4. [cite_start]Error Handling and Logging [cite: 86]
-          5. [cite_start]Testing Validation [cite: 87]
-          6. [cite_start]Reference Documents [cite: 88]
-          
-          Use <br> for line spacing and end with marker '---TOC-END-PAGE-BREAK---'.
+          # --- SYSTEM PROMPT (Externalized to avoid shell length limits) ---
+          cat <<EOF > system_prompt.tmp
+          You are a senior SAP CPI Technical Architect. Analyze the provided iFlow artifacts and synthesize them into a consolidated technical report.
 
-          **REQUIRED SECTIONS:**
-          <h1 style=\"color: ${{ env.HEADING_COLOR }};\">1. [cite_start]Introduction</h1> [cite: 76]
-          [cite_start]1.1 Purpose [cite: 77][cite_start], 1.2 Scope[cite: 78].
-          
-          <h1 style=\"color: ${{ env.HEADING_COLOR }};\">2. [cite_start]Integration Overview</h1> [cite: 79]
-          [cite_start]2.1 Integration Architecture (Use Mermaid 'graph TD' block here)[cite: 80].
-          [cite_start]2.2 Integration Components (Sender/Receiver systems + Adapters)[cite: 81, 108].
-          
-          <h1 style=\"color: ${{ env.HEADING_COLOR }};\">3. [cite_start]Integration Scenarios</h1> [cite: 82]
-          [cite_start]3.1 Scenario Description [cite: 83][cite_start], 3.2 Data Flows [cite: 84, 116][cite_start], 3.3 Security Requirements[cite: 85, 119].
-          
-          <h1 style=\"color: ${{ env.HEADING_COLOR }};\">4. [cite_start]Error Handling and Logging</h1>[cite: 86, 124].
-          
-          <h1 style=\"color: ${{ env.HEADING_COLOR }};\">5. [cite_start]Testing Validation</h1>[cite: 87, 138].
-          
-          <h1 style=\"color: ${{ env.HEADING_COLOR }};\">6. [cite_start]Reference Documents</h1>[cite: 88]."
+          CRITICALLY: 
+          1. Use ONLY inline HTML for H1 and H2 headings in color '${{ env.HEADING_COLOR }}'.
+          2. For Section 2.1, you MUST use a Mermaid 'graph TD' block.
+          3. IMPORTANT: Every Mermaid line MUST be on its own line. Do not combine them.
+
+          MANDATORY SECTION 1: TABLE OF CONTENTS
+          Format exactly as: <h1 style="color: ${{ env.HEADING_COLOR }};">Table of Contents</h1>
+          Follow with this list, using <br> for spacing:
+          1. Introduction<br>
+          1.1 Purpose<br>
+          1.2 Scope<br>
+          2. Integration Overview<br>
+          2.1 Integration Architecture<br>
+          2.2 Integration Components<br>
+          3. Integration Scenarios<br>
+          3.1 Scenario Description<br>
+          3.2 Data Flows<br>
+          3.3 Security Requirements<br>
+          4. Error Handling and Logging<br>
+          5. Testing Validation<br>
+          6. Reference Documents<br>
+          ---TOC-END-PAGE-BREAK---
+
+          REQUIRED DOCUMENT SECTIONS:
+          <h1 style="color: ${{ env.HEADING_COLOR }};">1. Introduction</h1>
+          1.1 Purpose, 1.2 Scope.
+
+          <h1 style="color: ${{ env.HEADING_COLOR }};">2. Integration Overview</h1>
+          2.1 Integration Architecture (Include the Mermaid graph here).
+          2.2 Integration Components (Sender/Receiver systems and Adapters).
+
+          <h1 style="color: ${{ env.HEADING_COLOR }};">3. Integration Scenarios</h1>
+          3.1 Scenario Description, 3.2 Data Flows, 3.3 Security Requirements.
+
+          <h1 style="color: ${{ env.HEADING_COLOR }};">4. Error Handling and Logging</h1>
+
+          <h1 style="color: ${{ env.HEADING_COLOR }};">5. Testing Validation</h1>
+
+          <h1 style="color: ${{ env.HEADING_COLOR }};">6. Reference Documents</h1>
+          EOF
 
           ALL_DOCS_GENERATED=false
 
@@ -85,15 +95,14 @@ jobs:
             echo "🚀 Processing iFlow: $IFLOW_ROOT_NAME"
             
             QUERY_FILE="user_query.tmp"
-            echo -e "Synthesize a report for '$IFLOW_ROOT_NAME'. Artifacts:\n" > "$QUERY_FILE"
+            echo -e "Generate technical documentation for iFlow '$IFLOW_ROOT_NAME' using these artifacts:\n" > "$QUERY_FILE"
             while IFS= read -r -d '' INPUT_FILE; do
-              echo -e "\n\n--- START: $INPUT_FILE ---\n" >> "$QUERY_FILE"
+              echo -e "\n--- ARTIFACT: $INPUT_FILE ---\n" >> "$QUERY_FILE"
               cat "$INPUT_FILE" >> "$QUERY_FILE"
-              echo -e "\n--- END: $INPUT_FILE ---\n" >> "$QUERY_FILE"
             done < <(find "$IFLOW_DIR" -type f \( -name 'iFlowContent.xml' -o -name '*.groovy' -o -name '*.xslt' -o -name '*.iflw' \) -print0)
 
             PAYLOAD_FILE="payload.json"
-            jq -n --arg system "$SYSTEM_PROMPT" --rawfile query "$QUERY_FILE" --arg model "$MODEL_NAME" \
+            jq -n --rawfile system system_prompt.tmp --rawfile query "$QUERY_FILE" --arg model "$MODEL_NAME" \
               '{model: $model, messages: [{role: "system", content: $system}, {role: "user", content: $query}], temperature: 0.1}' > "$PAYLOAD_FILE"
 
             RETRY_COUNT=0
@@ -102,7 +111,7 @@ jobs:
               GENERATED_TEXT=$(echo "$API_RESPONSE" | jq -r ".choices[0].message.content // empty")
 
               if [ -n "$GENERATED_TEXT" ] && [ "$GENERATED_TEXT" != "null" ]; then
-                # --- FIX: New cleaning logic that preserves internal Markdown newlines for Mermaid ---
+                # FIX: Remove outer code fences but preserve internal newlines for Mermaid
                 GENERATED_TEXT_CLEANED=$(echo "$GENERATED_TEXT" | sed '1{/^```/d}; ${/^```/d}')
                 
                 AUTHOR=$(git log -1 --pretty=format:'%an')
@@ -114,10 +123,7 @@ jobs:
                 
                 COVER_PAGE="${LOGO_HEADER}<div style=\"height: 80px;\"></div><h1 style=\"color: ${{ env.HEADING_COLOR }}; text-align: center; font-size: 3em;\">$CLEAN_NAME</h1>"
                 COVER_PAGE+="<h2 style=\"text-align: center;\">Technical Specification Document</h2>"
-                COVER_PAGE+="<div style=\"height: 100px;\"></div><div style=\"text-align: center;\"><table border=\"1\" style=\"margin: 0 auto; border-collapse: collapse;\">"
-                COVER_PAGE+="<tr><td style=\"padding: 10px;\"><b>Author</b></td><td style=\"padding: 10px;\">$AUTHOR</td></tr>"
-                COVER_PAGE+="<tr><td style=\"padding: 10px;\"><b>Date</b></td><td style=\"padding: 10px;\">$DATE</td></tr>"
-                COVER_PAGE+="</table></div>"
+                COVER_PAGE+="<div style=\"height: 100px;\"></div><div style=\"text-align: center;\"><table border=\"1\" style=\"margin: 0 auto; border-collapse: collapse;\"><tr><td style=\"padding:10px\"><b>Author</b></td><td style=\"padding:10px\">$AUTHOR</td></tr><tr><td style=\"padding:10px\"><b>Date</b></td><td style=\"padding:10px\">$DATE</td></tr></table></div>"
                 
                 FINAL_DOC="${COVER_PAGE}<div style=\"page-break-after: always;\"></div>\n\n${LOGO_HEADER}\n${GENERATED_TEXT_CLEANED}"
                 SECTION_BREAK="\n<div style=\"page-break-before: always;\"></div>\n${LOGO_HEADER}\n"
@@ -125,7 +131,6 @@ jobs:
 
                 echo -e "$FINAL_DOC" > "$OUTPUT_FILE"
                 ALL_DOCS_GENERATED=true
-                echo "✅ Documentation generated for $IFLOW_ROOT_NAME"
                 break
               else
                 RETRY_COUNT=$((RETRY_COUNT + 1))
@@ -135,6 +140,7 @@ jobs:
             rm -f "$QUERY_FILE" "$PAYLOAD_FILE"
           done < <(find "$BASE_PKG_DIR" -type f \( -name 'iFlowContent.xml' -o -name '*.iflw' \) -printf '%h\n' | sort -u)
 
+          rm -f system_prompt.tmp
           echo "docs_generated=$ALL_DOCS_GENERATED" >> $GITHUB_OUTPUT
 
       - name: Commit and Push Documentation
@@ -145,6 +151,6 @@ jobs:
           PKG_ID="${{ github.event.inputs.package_id }}"
           git add "cpi-artifacts/$PKG_ID/**/*_Summary.md"
           if ! git diff --cached --quiet; then
-              git commit -m "🤖 DOCS: Fixed mermaid rendering for $PKG_ID"
+              git commit -m "🤖 DOCS: Updated TOC and fixed mermaid rendering for $PKG_ID"
               git push
           fi
