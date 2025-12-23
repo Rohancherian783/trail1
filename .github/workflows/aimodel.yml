@@ -38,14 +38,16 @@ jobs:
             exit 1
           fi
 
-          # --- UPDATED SYSTEM PROMPT FOR PROFESSIONAL SPACING ---
+          # --- UPDATED SYSTEM PROMPT FOR BLUE SUBHEADINGS & PROFESSIONAL SPACING ---
           SYSTEM_PROMPT="You are a senior SAP CPI Technical Architect. Your task is to analyze the provided iFlow artifacts and create a professional technical report.
 
           **CRITICAL FORMATTING INSTRUCTIONS:**
-          1. **NO CLUMPING:** Every bullet point, every table, and every subheading MUST be separated by a double newline. 
-          2. **HEADINGS:** Use ONLY inline HTML for H1 and H2 (Color: ${{ env.HEADING_COLOR }}).
-          3. **TABLES:** You MUST use standard Markdown table syntax. Ensure there is a blank line before and after every table.
-          4. **VERTICALITY:** If you list multiple components or scripts, they MUST be on separate lines using bullet points or table rows.
+          1. **COLOR SCHEME:** All Headings (H1/H2) and Subheadings (e.g., 1.1, 2.1) MUST use the color '${{ env.HEADING_COLOR }}'.
+          2. **HEADINGS:** Use ONLY inline HTML for H1 and H2.
+          3. **SUBHEADINGS:** Every subheading label (e.g., 1.1 Purpose, 2.1 Integration Architecture) MUST be wrapped in: <b style=\"color: ${{ env.HEADING_COLOR }};\">...</b>.
+          4. **NO CLUMPING:** Every bullet point, every table, and every subheading MUST be separated by a double newline to ensure professional vertical spacing.
+          5. **TABLES:** Use standard Markdown table syntax. Ensure there is a blank line before and after every table.
+          6. **VERTICALITY:** If you list multiple components or scripts, they MUST be on separate lines using bullet points or table rows.
 
           **REQUIRED STRUCTURE:**
 
@@ -59,15 +61,17 @@ jobs:
           ---TOC-END-PAGE-BREAK---
 
           <h1 style=\"color: ${{ env.HEADING_COLOR }};\">1. Introduction</h1>
-          1.1 **Purpose**: [Provide description here]
+          <b style=\"color: ${{ env.HEADING_COLOR }};\">1.1 Purpose:</b> 
+          [Provide description here]
           
-          1.2 **Scope**: [Provide description here]
+          <b style=\"color: ${{ env.HEADING_COLOR }};\">1.2 Scope:</b> 
+          [Provide description here]
 
           <h1 style=\"color: ${{ env.HEADING_COLOR }};\">2. Integration Overview</h1>
-          2.1 **Integration Architecture**: 
+          <b style=\"color: ${{ env.HEADING_COLOR }};\">2.1 Integration Architecture:</b> 
           Provide a Mermaid 'graph TD' block. Ensure the block is on its own line.
 
-          2.2 **Integration Components**:
+          <b style=\"color: ${{ env.HEADING_COLOR }};\">2.2 Integration Components:</b>
           | Component Type | Name/Details | Description |
           | :--- | :--- | :--- |
           | Sender System | | |
@@ -75,24 +79,26 @@ jobs:
           | Adapter | | |
 
           <h1 style=\"color: ${{ env.HEADING_COLOR }};\">3. Integration Scenarios</h1>
-          3.1 **Scenario Description**: 
+          <b style=\"color: ${{ env.HEADING_COLOR }};\">3.1 Scenario Description:</b> 
           Use a numbered list (1., 2., 3.) for step-by-step logic. Each step MUST be on a new line.
 
-          3.2 **Data Flows**:
+          <b style=\"color: ${{ env.HEADING_COLOR }};\">3.2 Data Flows:</b>
           - **Mapping Logic**: [Description]
           - **XSLT**: [Description]
           - **Groovy Scripts**: [Description]
           (Ensure each bullet is on its own line).
 
-          3.3 **Security Requirements**:
+          <b style=\"color: ${{ env.HEADING_COLOR }};\">3.3 Security Requirements:</b>
           | Security Aspect | Details |
           | :--- | :--- |
           | Authentication | |
           | Encryption | |
 
           <h1 style=\"color: ${{ env.HEADING_COLOR }};\">4. Error Handling and Logging</h1>
+          [Describe error handling strategy]
 
           <h1 style=\"color: ${{ env.HEADING_COLOR }};\">5. Testing Validation</h1>
+          [Describe validation steps]
 
           <h1 style=\"color: ${{ env.HEADING_COLOR }};\">6. Reference Documents</h1>
           List analyzed files as a vertical bulleted list."
@@ -123,7 +129,6 @@ jobs:
               GENERATED_TEXT=$(echo "$API_RESPONSE" | jq -r ".choices[0].message.content // empty")
               
               if [ -n "$GENERATED_TEXT" ] && [ "$GENERATED_TEXT" != "null" ]; then
-                # Clean up any triple backticks the AI might wrap the whole response in
                 GENERATED_TEXT_CLEANED=$(echo -e "$GENERATED_TEXT" | sed -E '1s/^\s*```(markdown|text)?//' | sed -E '$s/\s*```\s*$//')
 
                 AUTHOR=$(git log -1 --pretty=format:'%an')
@@ -168,7 +173,7 @@ jobs:
           PKG_ID="${{ github.event.inputs.package_id }}"
           git add "cpi-artifacts/$PKG_ID/**/*_Summary.md"
           if ! git diff --cached --quiet; then
-              git commit -m "🤖 DOCS: Fixed formatting for $PKG_ID"
+              git commit -m "🤖 DOCS: Fixed formatting and colors for $PKG_ID"
               git push
           else
               echo "No changes to commit."
