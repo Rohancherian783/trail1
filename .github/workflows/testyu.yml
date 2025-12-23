@@ -1,4 +1,4 @@
-name: 🤖 Generation Individual iFlow Documentation
+name: 🤖 CPI Documentation
 on:
   workflow_dispatch:
     inputs:
