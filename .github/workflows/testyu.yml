@@ -1,4 +1,4 @@
-name: 🤖 CPIGeneration  Documentation
+name: 🤖 Generation Individual iFlow Documentation
 on:
   workflow_dispatch:
     inputs:
@@ -22,7 +22,7 @@ jobs:
           sudo apt-get install -y jq python3-pip
           pip3 install weasyprint
 
-      - name: Generate Technical Documentation
+      - name: Generate Documentation
         id: documentation_step
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -33,26 +33,37 @@ jobs:
           MODEL_NAME="gpt-4o-mini"
           BASE_PKG_DIR="cpi-artifacts/$PKG_ID"
 
-          SYSTEM_PROMPT="You are a senior SAP CPI Technical Architect. 
-          **FORMATTING RULES:**
-          1. Use ONLY HTML tags.
-          2. **CLICKABLE TOC:** Every item in the Table of Contents must be a link: <a href='#id' style='text-decoration:none; color:black;'>Section Name</a>.
-          3. **ANCHORS:** Every heading in the document must have a matching ID: <h2 id='id' style='color: ${{ env.HEADING_COLOR }};'>...</h2>.
-          4. **REQUIRED CONTENT:** Provide detailed technical descriptions for sections 1.1 through 6.0.
+          # --- SYSTEM PROMPT: MANDATING FULL STRUCTURE & CLICKABLE TOC ---
+          SYSTEM_PROMPT="You are a senior SAP CPI Technical Architect. Create a report in PURE HTML.
+          **FORMATTING:** 1. Headings MUST have IDs for the clickable TOC (e.g., <h2 id='sec1'>).
+          2. Section 1.1 and 1.2 content MUST be on a new line.
+          3. Section 2.1 MUST include a Mermaid.js 'graph TD' diagram based on the logic.
+          
+          **STRUCTURE REQUIRED:**
+          1. Introduction (1.1 Purpose, 1.2 Scope)
+          2. Integration Overview (2.1 Architecture, 2.2 Components)
+          3. Integration Scenarios (3.1 Description, 3.2 Data Flows, 3.3 Security)
+          4. Error Handling and Logging
+          5. Testing Validation
+          6. Reference Documents
 
           **TOC TEMPLATE (MUST BE CLICKABLE):**
-          <h2 id='toc' style='color: ${{ env.HEADING_COLOR }};'>Table of Contents</h2>
-          <ul style='list-style: none; padding-left: 0; line-height: 2;'>
-            <li><b><a href='#sec1' style='text-decoration:none; color:inherit;'>1. Introduction</a></b></li>
-            <li style='padding-left: 20px;'><a href='#sec1_1' style='text-decoration:none; color:inherit;'>1.1 Purpose</a></li>
-            <li style='padding-left: 20px;'><a href='#sec1_2' style='text-decoration:none; color:inherit;'>1.2 Scope</a></li>
-            <li><b><a href='#sec2' style='text-decoration:none; color:inherit;'>2. Integration Overview</a></b></li>
-            <li style='padding-left: 20px;'><a href='#sec2_1' style='text-decoration:none; color:inherit;'>2.1 Integration Architecture</a></li>
-            <li style='padding-left: 20px;'><a href='#sec2_2' style='text-decoration:none; color:inherit;'>2.2 Integration Components</a></li>
-            <li><b><a href='#sec3' style='text-decoration:none; color:inherit;'>3. Integration Scenarios</a></b></li>
-            <li style='padding-left: 20px;'><a href='#sec3_3' style='text-decoration:none; color:inherit;'>3.3 Security Requirements</a></li>
-          </ul>
-          <div style='page-break-after: always;'></div>"
+          <h2 style='color: ${{ env.HEADING_COLOR }};'>Table of Contents</h2>
+          <ul style='list-style: none; line-height: 1.8;'>
+            <li><b>1. <a href='#sec1'>Introduction</a></b></li>
+            <li style='padding-left:20px;'>1.1 <a href='#sec1_1'>Purpose</a></li>
+            <li style='padding-left:20px;'>1.2 <a href='#sec1_2'>Scope</a></li>
+            <li><b>2. <a href='#sec2'>Integration Overview</a></b></li>
+            <li style='padding-left:20px;'>2.1 <a href='#sec2_1'>Architecture</a></li>
+            <li style='padding-left:20px;'>2.2 <a href='#sec2_2'>Components</a></li>
+            <li><b>3. <a href='#sec3'>Integration Scenarios</a></b></li>
+            <li style='padding-left:20px;'>3.1 <a href='#sec3_1'>Description</a></li>
+            <li style='padding-left:20px;'>3.2 <a href='#sec3_2'>Data Flows</a></li>
+            <li style='padding-left:20px;'>3.3 <a href='#sec3_3'>Security</a></li>
+            <li><b>4. <a href='#sec4'>Error Handling</a></b></li>
+            <li><b>5. <a href='#sec5'>Testing</a></b></li>
+            <li><b>6. <a href='#sec6'>References</a></b></li>
+          </ul><div style='page-break-after: always;'></div>"
 
           ALL_DOCS_GENERATED=false
           while IFS= read -r IFLOW_DIR; do
@@ -83,21 +94,22 @@ jobs:
                   @bottom-right { content: 'Page ' counter(page); font-size: 10pt; }
                 }
                 #header { position: running(header); width: 100%; border-bottom: 2px solid ${{ env.HEADING_COLOR }}; }
-                .logo-table { width: 100%; border: none !important; }
-                .logo-table td { border: none !important; padding: 0; vertical-align: middle; }
+                .header-table { width: 100%; border: none !important; margin: 0 !important; }
+                .header-table td { border: none !important; padding: 0 !important; vertical-align: middle; }
                 body { font-family: 'Helvetica', Arial, sans-serif; font-size: 11pt; line-height: 1.6; color: #333; }
                 h2, h3 { color: ${{ env.HEADING_COLOR }}; margin-top: 1.5em; }
                 table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-                th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
+                th, td { border: 1px solid #ddd; padding: 10px; }
                 th { background-color: #f8f9fa; }
+                a { text-decoration: none; color: inherit; }
                 .cover { text-align: center; page-break-after: always; padding-top: 4cm; }
               </style>"
 
               HEADER_HTML="<div id='header'>
-                <table class='logo-table'>
+                <table class='header-table'>
                   <tr>
-                    <td style='text-align: left;'><img src='$SAP_LOGO' style='height: 80px;'></td>
-                    <td style='text-align: right;'><img src='$MM_LOGO' style='height: 65px;'></td>
+                    <td style='text-align: left;'><img src='$SAP_LOGO' style='height: 85px;'></td>
+                    <td style='text-align: right;'><img src='$MM_LOGO' style='height: 70px;'></td>
                   </tr>
                 </table>
               </div>"
@@ -127,7 +139,7 @@ jobs:
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git add "cpi-artifacts/**/*.pdf"
-          git commit -m "🤖 DOCS: Clickable TOC and Forced Left/Right Logos"
+          git commit -m "🤖 DOCS: Fixed Header Alignment and Full Clickable Structure"
           git push
 
 
