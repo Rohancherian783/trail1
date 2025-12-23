@@ -38,15 +38,16 @@ jobs:
             exit 1
           fi
 
-          # --- UPDATED SYSTEM PROMPT WITH DETAILED TOC AND BLUE SUBHEADINGS ---
+          # --- UPDATED SYSTEM PROMPT: FORCE NEW LINES & EXPANDED DETAIL ---
           SYSTEM_PROMPT="You are a senior SAP CPI Technical Architect. Your task is to analyze the provided artifacts and create a professional technical report.
 
           **CRITICAL FORMATTING INSTRUCTIONS:**
           1. **COLOR SCHEME:** All Headings (H1/H2) and Subheadings (e.g., 1.1, 2.1) MUST use the color '${{ env.HEADING_COLOR }}'.
           2. **HEADINGS:** Use ONLY inline HTML for H1 and H2.
           3. **SUBHEADINGS:** Every subheading label (e.g., 1.1 Purpose) MUST be wrapped in: <b style=\"color: ${{ env.HEADING_COLOR }};\">...</b>.
-          4. **NO CLUMPING:** Every bullet point, table, and subheading MUST be separated by a double newline.
-          5. **TABLES:** Use standard Markdown table syntax with blank lines before and after.
+          4. **FORCE NEW LINE:** For subheadings 1.1 and 1.2, you MUST place the content on a NEW LINE immediately after the bold label. Do not keep it on the same line.
+          5. **NO CLUMPING:** Every bullet point, table, and subheading MUST be separated by a double newline.
+          6. **DETAIL LEVEL:** The 'Purpose' and 'Scope' sections must be expanded. Do not provide a single sentence. Explain the business logic, the systems involved, and the technical objective of the iFlow clearly and professionally.
 
           **REQUIRED STRUCTURE:**
           <h1 style=\"color: ${{ env.HEADING_COLOR }}; font-size: 2.5em;\">Table of Contents</h1>
@@ -66,9 +67,12 @@ jobs:
           ---TOC-END-PAGE-BREAK---
 
           <h1 style=\"color: ${{ env.HEADING_COLOR }};\">1. Introduction</h1>
-          <b style=\"color: ${{ env.HEADING_COLOR }};\">1.1 Purpose:</b> [Analyze and provide purpose]
           
-          <b style=\"color: ${{ env.HEADING_COLOR }};\">1.2 Scope:</b> [Analyze and provide scope]
+          <b style=\"color: ${{ env.HEADING_COLOR }};\">1.1 Purpose:</b>
+          [Provide an expanded, detailed explanation of the integration's purpose, including business context and technical goals, starting on this new line]
+
+          <b style=\"color: ${{ env.HEADING_COLOR }};\">1.2 Scope:</b>
+          [Provide an expanded, detailed explanation of the technical boundaries, systems, and processes covered, starting on this new line]
 
           <h1 style=\"color: ${{ env.HEADING_COLOR }};\">2. Integration Overview</h1>
           <b style=\"color: ${{ env.HEADING_COLOR }};\">2.1 Integration Architecture:</b> (Use Mermaid 'graph TD')
@@ -90,8 +94,6 @@ jobs:
             FINAL_IFLOW_DIR="$BASE_PKG_DIR/$IFLOW_ROOT_NAME"
             OUTPUT_FILE="$FINAL_IFLOW_DIR/${IFLOW_ROOT_NAME}_Summary.md"
 
-            # --- AUTOMATED VERSION EXTRACTION ---
-            # Looks for <Version>X.X.X</Version> in xml or iflw files
             EXTRACTED_VERSION=$(grep -rPho '(?<=<Version>)[^<]+' "$IFLOW_DIR" | head -n 1)
             IFLOW_VERSION=${EXTRACTED_VERSION:-"1.0.0"}
 
@@ -147,7 +149,7 @@ jobs:
           git config user.email "actions@github.com"
           PKG_ID="${{ github.event.inputs.package_id }}"
           git add "cpi-artifacts/$PKG_ID/**/*_Summary.md"
-          git commit -m "🤖 DOCS: Final Professional Specs for $PKG_ID"
+          git commit -m "🤖 DOCS: Detailed Purpose and formatting for $PKG_ID"
           git push
                 
         
