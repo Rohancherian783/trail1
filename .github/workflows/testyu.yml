@@ -1,4 +1,4 @@
-name: 🤖 Generation Individual iFlow Documentation
+name: 🤖 CPI Generation Documentation
 on:
   workflow_dispatch:
     inputs:
@@ -21,7 +21,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y jq python3-pip
           pip3 install weasyprint
-
       - name: Generate Documentation
         id: documentation_step
         env:
@@ -32,128 +31,104 @@ jobs:
           API_URL="https://api.openai.com/v1/chat/completions"
           MODEL_NAME="gpt-4o-mini"
           BASE_PKG_DIR="cpi-artifacts/$PKG_ID"
-
-          SYSTEM_PROMPT="You are a senior SAP CPI Technical Architect. Generate a report in PURE HTML.
-          1. ANCHORS: Use IDs for headings (e.g., <h1 id='sec1'>).
-          2. CLICKABLE TOC: Items must be links: <a href='#sec1'>1. Introduction</a>.
-          3. ARCHITECTURE: In 2.1, create a Mermaid.js diagram (graph TD) based on logic.
+          # --- SYSTEM PROMPT: MANDATING FULL STRUCTURE & CLICKABLE TOC ---
+          SYSTEM_PROMPT="You are a senior SAP CPI Technical Architect. Create a report in PURE HTML.
+          **FORMATTING:** 1. Headings MUST have IDs for the clickable TOC (e.g., <h2 id='sec1'>).
+          2. Section 1.1 and 1.2 content MUST be on a new line.
+          3. Section 2.1 MUST include a Mermaid.js 'graph TD' diagram based on the logic.
           
-          STRUCTURE:
-          <h1 id='toc' style='color: ${{ env.HEADING_COLOR }};'>Table of Contents</h1>
-          <ul style='list-style:none; line-height:2;'>
+          **STRUCTURE REQUIRED:**
+          1. Introduction (1.1 Purpose, 1.2 Scope)
+          2. Integration Overview (2.1 Architecture, 2.2 Components)
+          3. Integration Scenarios (3.1 Description, 3.2 Data Flows, 3.3 Security)
+          4. Error Handling and Logging
+          5. Testing Validation
+          6. Reference Documents
+          **TOC TEMPLATE (MUST BE CLICKABLE):**
+          <h2 style='color: ${{ env.HEADING_COLOR }};'>Table of Contents</h2>
+          <ul style='list-style: none; line-height: 1.8;'>
             <li><b>1. <a href='#sec1'>Introduction</a></b></li>
             <li style='padding-left:20px;'>1.1 <a href='#sec1_1'>Purpose</a></li>
             <li style='padding-left:20px;'>1.2 <a href='#sec1_2'>Scope</a></li>
             <li><b>2. <a href='#sec2'>Integration Overview</a></b></li>
-            <li style='padding-left:20px;'>2.1 <a href='#sec2_1'>Architecture Diagram</a></li>
-            <li style='padding-left:20px;'>2.2 <a href='#sec2_2'>Integration Components</a></li>
+            <li style='padding-left:20px;'>2.1 <a href='#sec2_1'>Architecture</a></li>
+            <li style='padding-left:20px;'>2.2 <a href='#sec2_2'>Components</a></li>
             <li><b>3. <a href='#sec3'>Integration Scenarios</a></b></li>
-            <li style='padding-left:20px;'>3.1 <a href='#sec3_1'>Scenario Description</a></li>
+            <li style='padding-left:20px;'>3.1 <a href='#sec3_1'>Description</a></li>
             <li style='padding-left:20px;'>3.2 <a href='#sec3_2'>Data Flows</a></li>
-            <li style='padding-left:20px;'>3.3 <a href='#sec3_3'>Security Requirements</a></li>
-            <li><b>4. <a href='#sec4'>Error Handling and Logging</a></b></li>
-            <li><b>5. <a href='#sec5'>Testing Validation</a></b></li>
-            <li><b>6. <a href='#sec6'>Reference Documents</a></b></li>
-          </ul>
-          ---PAGE_BREAK---"
-
+            <li style='padding-left:20px;'>3.3 <a href='#sec3_3'>Security</a></li>
+            <li><b>4. <a href='#sec4'>Error Handling</a></b></li>
+            <li><b>5. <a href='#sec5'>Testing</a></b></li>
+            <li><b>6. <a href='#sec6'>References</a></b></li>
+          </ul><div style='page-break-after: always;'></div>"
           ALL_DOCS_GENERATED=false
           while IFS= read -r IFLOW_DIR; do
             IFLOW_ROOT_NAME=$(echo "$IFLOW_DIR" | sed "s|^$BASE_PKG_DIR/||" | cut -d/ -f1)
             OUTPUT_PDF="$BASE_PKG_DIR/$IFLOW_ROOT_NAME/${IFLOW_ROOT_NAME}_Technical_Spec.pdf"
             EXTRACTED_VERSION=$(grep -rPho '(?<=<Version>)[^<]+' "$IFLOW_DIR" | head -n 1)
             IFLOW_VERSION=${EXTRACTED_VERSION:-"1.0.0"}
-
-            # Gather Artifacts
             QUERY_FILE="user_query.tmp"
             find "$IFLOW_DIR" -type f \( -name 'iFlowContent.xml' -o -name '*.groovy' -o -name '*.xslt' -o -name '*.iflw' \) -exec sh -c 'echo "FILE: {}"; cat {}' \; >> "$QUERY_FILE"
-
-            # Call OpenAI
             PAYLOAD_FILE="payload.json"
             jq -n --arg system "$SYSTEM_PROMPT" --rawfile query "$QUERY_FILE" --arg model "$MODEL_NAME" \
               '{model: $model, messages: [{role: "system", content: $system}, {role: "user", content: $query}], temperature: 0.1}' > "$PAYLOAD_FILE"
             
             API_RESPONSE=$(curl -s -X POST "$API_URL" -H "Content-Type: application/json" -H "Authorization: Bearer $OPENAI_API_KEY" -d @"$PAYLOAD_FILE")
             GENERATED_HTML=$(echo "$API_RESPONSE" | jq -r ".choices[0].message.content // empty" | sed -E '1s/^\s*```(html)?//' | sed -E '$s/\s*```\s*$//')
-
             if [ -n "$GENERATED_HTML" ]; then
-              # Pass data to Python safely via ENV variables to avoid YAML line errors
-              export TEMP_BODY="$GENERATED_HTML"
-              export TEMP_IFLOW_NAME="$IFLOW_ROOT_NAME"
-              export TEMP_VERSION="$IFLOW_VERSION"
-              export TEMP_AUTHOR=$(git log -1 --pretty=format:'%an')
-              export TEMP_DATE=$(date +'%Y-%m-%d')
-              export TEMP_OUTPUT_PATH="$OUTPUT_PDF"
-
-              python3 - <<'EOF'
-import os
-from weasyprint import HTML
-
-heading_color = os.getenv("HEADING_COLOR", "#1f4e79")
-iflow_name = os.getenv("TEMP_IFLOW_NAME", "").replace('_', ' ')
-version = os.getenv("TEMP_VERSION", "1.0.0")
-author = os.getenv("TEMP_AUTHOR", "Admin")
-date = os.getenv("TEMP_DATE", "")
-output_path = os.getenv("TEMP_OUTPUT_PATH")
-body_content = os.getenv("TEMP_BODY", "")
-
-sap_logo = "https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/sap_logo.png"
-mm_logo = "https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/motiveminds_logo.png"
-
-logo_header = f"""
-<table style='width:100%; border:none; margin-bottom:20px;'>
-    <tr>
-        <td style='text-align:left; border:none;'><img src='{sap_logo}' style='height:80px;'></td>
-        <td style='text-align:right; border:none;'><img src='{mm_logo}' style='height:65px;'></td>
-    </tr>
-</table>
-"""
-
-style = f"""
-<style>
-    @page {{ size: A4; margin: 2cm; @bottom-right {{ content: 'Page ' counter(page); font-size: 10pt; }} }}
-    body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
-    h1, h2, h3 {{ color: {heading_color}; }}
-    table {{ width: 100%; border-collapse: collapse; margin: 20px 0; }}
-    th, td {{ border: 1px solid #ddd; padding: 10px; text-align: left; }}
-    th {{ background-color: #f8f9fa; }}
-    .cover {{ text-align: center; padding-top: 4cm; page-break-after: always; }}
-    a {{ text-decoration: none; color: inherit; }}
-</style>
-"""
-
-cover = f"""
-<div class='cover'>
-    {logo_header}
-    <h1 style='font-size: 3.5em; margin-top: 50px;'>{iflow_name}</h1>
-    <h2 style='font-weight: normal; margin-bottom: 80px;'>Technical Specification Document</h2>
-    <h3>Document Control</h3>
-    <table style='width: 80%; margin: 0 auto;'>
-        <tr><th>Version</th><th>Date</th><th>Author</th><th>Description</th></tr>
-        <tr><td>{version}</td><td>{date}</td><td>{author}</td><td>Initial Technical Documentation</td></tr>
-    </table>
-</div>
-"""
-
-section_break = f"<div style='page-break-before: always;'></div>{logo_header}"
-final_html = f"{style}{cover}{logo_header}{body_content.replace('---PAGE_BREAK---', section_break)}"
-
-HTML(string=final_html).write_pdf(output_path)
-EOF
+              SAP_LOGO="https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/sap_logo.png"
+              MM_LOGO="https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/motiveminds_logo.png"
+              AUTHOR=$(git log -1 --pretty=format:'%an')
+              
+              STYLE="<style>
+                @page { 
+                  size: A4; margin: 4.5cm 2cm 2.5cm 2cm; 
+                  @top-center { content: element(header); }
+                  @bottom-right { content: 'Page ' counter(page); font-size: 10pt; }
+                }
+                #header { position: running(header); width: 100%; border-bottom: 2px solid ${{ env.HEADING_COLOR }}; }
+                .header-table { width: 100%; border: none !important; margin: 0 !important; }
+                .header-table td { border: none !important; padding: 0 !important; vertical-align: middle; }
+                body { font-family: 'Helvetica', Arial, sans-serif; font-size: 11pt; line-height: 1.6; color: #333; }
+                h2, h3 { color: ${{ env.HEADING_COLOR }}; margin-top: 1.5em; }
+                table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+                th, td { border: 1px solid #ddd; padding: 10px; }
+                th { background-color: #f8f9fa; }
+                a { text-decoration: none; color: inherit; }
+                .cover { text-align: center; page-break-after: always; padding-top: 4cm; }
+              </style>"
+              HEADER_HTML="<div id='header'>
+                <table class='header-table'>
+                  <tr>
+                    <td style='text-align: left;'><img src='$SAP_LOGO' style='height: 85px;'></td>
+                    <td style='text-align: right;'><img src='$MM_LOGO' style='height: 70px;'></td>
+                  </tr>
+                </table>
+              </div>"
+              COVER="<div class='cover'>
+                <h1 style='font-size: 34pt; color: ${{ env.HEADING_COLOR }};'>$(echo $IFLOW_ROOT_NAME | sed 's/_/ /g')</h1>
+                <p style='font-size: 18pt;'>Technical Specification Document</p>
+                <table style='width: 380px; margin: 80px auto;'>
+                  <tr><th>Author</th><td>$AUTHOR</td></tr>
+                  <tr><th>Date</th><td>$(date +'%Y-%m-%d')</td></tr>
+                  <tr><th>Version</th><td>$IFLOW_VERSION</td></tr>
+                </table>
+              </div>"
+              echo "${STYLE}${HEADER_HTML}${COVER}${GENERATED_HTML}" > final.html
+              weasyprint final.html "$OUTPUT_PDF"
               ALL_DOCS_GENERATED=true
             fi
-            rm -f "$QUERY_FILE" "$PAYLOAD_FILE"
+            rm -f "$QUERY_FILE" "$PAYLOAD_FILE" final.html
           done < <(find "$BASE_PKG_DIR" -type f \( -name 'iFlowContent.xml' -o -name '*.iflw' \) -printf '%h\n' | sort -u)
           
           echo "docs_generated=$ALL_DOCS_GENERATED" >> $GITHUB_OUTPUT
-
       - name: Commit and Push
         if: steps.documentation_step.outputs.docs_generated == 'true'
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git add "cpi-artifacts/**/*.pdf"
-          git commit -m "🤖 DOCS: Fixed YAML syntax and logo alignment"
+          git commit -m "🤖 DOCS: Fixed Header Alignment and Full Clickable Structure"
           git push
 
 
