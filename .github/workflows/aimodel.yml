@@ -30,7 +30,6 @@ jobs:
           PKG_ID: ${{ github.event.inputs.package_id }}
           HEADING_COLOR: "#1f4e79"
         run: |
-          # --- Configuration ---
           API_URL="https://api.openai.com/v1/chat/completions"
           MODEL_NAME="gpt-4o-mini"
           BASE_PKG_DIR="cpi-artifacts/$PKG_ID"
@@ -40,18 +39,19 @@ jobs:
             exit 1
           fi
 
-          # --- SYSTEM PROMPT (Externalized to avoid shell length limits) ---
+          # --- EXTERNALIZED SYSTEM PROMPT ---
+          # This avoids the "File name too long" error and ensures proper formatting logic.
           cat <<EOF > system_prompt.tmp
-          You are a senior SAP CPI Technical Architect. Analyze the provided iFlow artifacts and synthesize them into a consolidated technical report.
+          You are a senior SAP CPI Technical Architect. Your task is to analyze the provided iFlow artifacts and synthesize them into a consolidated technical report.
 
           CRITICALLY: 
           1. Use ONLY inline HTML for H1 and H2 headings in color '${{ env.HEADING_COLOR }}'.
           2. For Section 2.1, you MUST use a Mermaid 'graph TD' block.
-          3. IMPORTANT: Every Mermaid line MUST be on its own line. Do not combine them.
+          3. IMPORTANT: Every Mermaid line MUST be on a new line. Do not put the entire diagram on one line.
+          4. Table of Contents MUST match the provided screenshot structure exactly.
 
           MANDATORY SECTION 1: TABLE OF CONTENTS
-          Format exactly as: <h1 style="color: ${{ env.HEADING_COLOR }};">Table of Contents</h1>
-          Follow with this list, using <br> for spacing:
+          <h1 style="color: ${{ env.HEADING_COLOR }};">Table of Contents</h1>
           1. Introduction<br>
           1.1 Purpose<br>
           1.2 Scope<br>
@@ -72,8 +72,8 @@ jobs:
           1.1 Purpose, 1.2 Scope.
 
           <h1 style="color: ${{ env.HEADING_COLOR }};">2. Integration Overview</h1>
-          2.1 Integration Architecture (Include the Mermaid graph here).
-          2.2 Integration Components (Sender/Receiver systems and Adapters).
+          2.1 Integration Architecture (Use a Mermaid 'graph TD' diagram).
+          2.2 Integration Components (Sender/Receiver systems + Adapters).
 
           <h1 style="color: ${{ env.HEADING_COLOR }};">3. Integration Scenarios</h1>
           3.1 Scenario Description, 3.2 Data Flows, 3.3 Security Requirements.
@@ -95,7 +95,7 @@ jobs:
             echo "🚀 Processing iFlow: $IFLOW_ROOT_NAME"
             
             QUERY_FILE="user_query.tmp"
-            echo -e "Generate technical documentation for iFlow '$IFLOW_ROOT_NAME' using these artifacts:\n" > "$QUERY_FILE"
+            echo -e "Generate the report for iFlow '$IFLOW_ROOT_NAME' using these artifacts:\n" > "$QUERY_FILE"
             while IFS= read -r -d '' INPUT_FILE; do
               echo -e "\n--- ARTIFACT: $INPUT_FILE ---\n" >> "$QUERY_FILE"
               cat "$INPUT_FILE" >> "$QUERY_FILE"
@@ -111,7 +111,8 @@ jobs:
               GENERATED_TEXT=$(echo "$API_RESPONSE" | jq -r ".choices[0].message.content // empty")
 
               if [ -n "$GENERATED_TEXT" ] && [ "$GENERATED_TEXT" != "null" ]; then
-                # FIX: Remove outer code fences but preserve internal newlines for Mermaid
+                # FIX: Clean the response without collapsing lines.
+                # This ensures the Mermaid diagram is preserved on multiple lines.
                 GENERATED_TEXT_CLEANED=$(echo "$GENERATED_TEXT" | sed '1{/^```/d}; ${/^```/d}')
                 
                 AUTHOR=$(git log -1 --pretty=format:'%an')
@@ -151,6 +152,6 @@ jobs:
           PKG_ID="${{ github.event.inputs.package_id }}"
           git add "cpi-artifacts/$PKG_ID/**/*_Summary.md"
           if ! git diff --cached --quiet; then
-              git commit -m "🤖 DOCS: Updated TOC and fixed mermaid rendering for $PKG_ID"
+              git commit -m "🤖 DOCS: Fixed TOC formatting and Mermaid rendering for $PKG_ID"
               git push
           fi
