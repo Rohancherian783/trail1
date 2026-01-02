@@ -39,17 +39,18 @@ jobs:
             exit 1
           fi
 
-          # --- SYSTEM PROMPT (Updated for Project-Specific Test Cases) ---
+          # --- SYSTEM PROMPT (Optimized for boxed tables and dynamic test cases) ---
           SYSTEM_PROMPT="You are a senior SAP CPI Technical Architect. Your task is to analyze the provided artifacts and create a professional technical report.
           **CRITICAL FORMATTING INSTRUCTIONS:**
           1. **COLOR SCHEME:** All Headings (H1/H2) and Subheadings (e.g., 1.1, 2.1) MUST use the color '${{ env.HEADING_COLOR }}'.
           2. **HEADINGS:** Use ONLY inline HTML for H1 and H2.
-          3. **SUBHEADINGS:** Every subheading label (e.g., 1.1 Purpose) MUST be wrapped in: <b style=\"color: ${{ env.HEADING_COLOR }};\">...</b>.
-          4. **FORCE NEW LINE:** For subheadings 1.1 and 1.2, you MUST place the content on a NEW LINE immediately after the bold label.
-          5. **TESTING VALIDATION:** You MUST analyze the integration logic in the provided artifacts and generate 5-6 logical 'Testing Details' test cases specific to THIS project. 
+          3. **SUBHEADINGS:** Every subheading label MUST be wrapped in: <b style=\"color: ${{ env.HEADING_COLOR }};\">...</b>.
+          4. **FORCE NEW LINE:** For subheadings 1.1 and 1.2, place the content on a NEW LINE immediately after the bold label.
+          5. **TABLES (IN BOXES):** All tables MUST be rendered as standard Markdown tables. 
+          6. **TESTING VALIDATION:** In Section 5, you MUST analyze the integration logic in the provided artifacts (XML, Groovy, etc.) and generate 5-6 logical test cases specific to THIS project. 
              - Column 1: Test Case ID (TC01, TC02, etc.)
-             - Column 2: Scenario (Specific to the iFlow logic found in the code)
-             - Column 3: Expected Outcome (Success criteria based on the code)
+             - Column 2: Scenario (Derived from the specific iFlow code)
+             - Column 3: Expected Outcome (Success criteria based on the code logic)
 
           **REQUIRED STRUCTURE:**
           <h1 style=\"color: ${{ env.HEADING_COLOR }}; font-size: 2.5em;\">Table of Contents</h1>
@@ -77,13 +78,13 @@ jobs:
           <b style=\"color: ${{ env.HEADING_COLOR }};\">2.2 Integration Components:</b>
           | Component Type | Name/Details | Description |
           <h1 style=\"color: ${{ env.HEADING_COLOR }};\">3. Integration Scenarios</h1>
-          <b style=\"color: ${{ env.HEADING_COLOR }};\">3.1 Scenario Description:</b> (Numbered list)
-          <b style=\"color: ${{ env.HEADING_COLOR }};\">3.2 Data Flows:</b> (Bulleted list)
-          <b style=\"color: ${{ env.HEADING_COLOR }};\">3.3 Security Requirements:</b> (Markdown table)
+          <b style=\"color: ${{ env.HEADING_COLOR }};\">3.1 Scenario Description:</b>
+          <b style=\"color: ${{ env.HEADING_COLOR }};\">3.2 Data Flows:</b>
+          <b style=\"color: ${{ env.HEADING_COLOR }};\">3.3 Security Requirements:</b>
           <h1 style=\"color: ${{ env.HEADING_COLOR }};\">4. Error Handling and Logging</h1>
           <h1 style=\"color: ${{ env.HEADING_COLOR }};\">5. Testing Validation</h1>
           **Testing Details – Sheet: Testing**
-          (Construct a Markdown table using project-specific test scenarios derived from the code.)
+          (Create a Markdown table here using only the logic found in the provided artifacts.)
           <h1 style=\"color: ${{ env.HEADING_COLOR }};\">6. Reference Documents</h1>"
 
           ALL_DOCS_GENERATED=false
@@ -120,14 +121,14 @@ jobs:
               
               LOGO_HEADER="<div style=\"width:100%; height: 100px;\"><div style=\"float: left;\"><img src=\"$SAP_LOGO\" width=\"200\" height=\"80\"/></div><div style=\"float: right;\"><img src=\"$MM_LOGO\" width=\"190\" height=\"70\"/></div><div style=\"clear: both;\"></div></div>"
               
-              # GLOBAL STYLE: Fixes missing right border and ensures black lines on all tables
-              GLOBAL_STYLE="<style>table { width: 98% !important; border-collapse: collapse !important; border: 1px solid #000 !important; margin: 0 auto 20px auto; } th, td { border: 1px solid #000 !important; padding: 12px !important; text-align: left; } th { background-color: #f2f2f2; }</style>"
+              # GLOBAL CSS: This ensures ALL tables in the document are in boxes with full borders
+              GLOBAL_STYLE="<style>table { width: 98% !important; border-collapse: collapse !important; border: 1px solid #000 !important; margin: 20px auto; } th, td { border: 1px solid #000 !important; padding: 12px !important; text-align: left; } th { background-color: #f2f2f2; }</style>"
 
               COVER_PAGE="${LOGO_HEADER}<div style=\"height: 100px;\"></div><h1 style=\"color: ${{ env.HEADING_COLOR }}; text-align: center; font-size: 3.5em;\">$CLEAN_NAME</h1>"
               COVER_PAGE+="<h2 style=\"text-align: center; font-size: 2em;\">Technical Specification Document</h2>"
               COVER_PAGE+="<div style=\"height: 100px;\"></div><div style=\"text-align: center;\">"
               
-              # Apply global style to the cover page table
+              # Boxed table for the cover page
               COVER_PAGE+="<table>"
               COVER_PAGE+="<tr><th>Author</th><td>$AUTHOR</td></tr>"
               COVER_PAGE+="<tr><th>Date</th><td>$DATE</td></tr>"
@@ -153,5 +154,5 @@ jobs:
           git config user.email "actions@github.com"
           PKG_ID="${{ github.event.inputs.package_id }}"
           git add "cpi-artifacts/$PKG_ID/**/*_Summary.md"
-          git commit -m "🤖 DOCS: Fixed table borders and automated project-specific test cases for $PKG_ID"
+          git commit -m "🤖 DOCS: Fixed boxed tables and automated test cases for $PKG_ID"
           git push
