@@ -39,7 +39,7 @@ jobs:
             exit 1
           fi
 
-          # --- UPDATED SYSTEM PROMPT ---
+          # --- SYSTEM PROMPT ---
           SYSTEM_PROMPT="You are a senior SAP CPI Technical Architect. Your task is to analyze the provided artifacts and create a professional technical report.
           **CRITICAL FORMATTING INSTRUCTIONS:**
           1. **COLOR SCHEME:** All Headings (H1/H2) and Subheadings (e.g., 1.1, 2.1) MUST use the color '${{ env.HEADING_COLOR }}'.
@@ -111,15 +111,17 @@ jobs:
               SAP_LOGO="https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/sap_logo.png"
               MM_LOGO="https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/motiveminds_logo.png"
               
-              # --- MODIFIED: INCREASED SIZE AND ALIGNED LOGOS ---
               LOGO_HEADER="<div style=\"width:100%; height: 100px;\"><div style=\"float: left;\"><img src=\"$SAP_LOGO\" width=\"200\" height=\"80\"/></div><div style=\"float: right;\"><img src=\"$MM_LOGO\" width=\"190\" height=\"70\"/></div><div style=\"clear: both;\"></div></div>"
               
               COVER_PAGE="${LOGO_HEADER}<div style=\"height: 100px;\"></div><h1 style=\"color: ${{ env.HEADING_COLOR }}; text-align: center; font-size: 3.5em;\">$CLEAN_NAME</h1>"
               COVER_PAGE+="<h2 style=\"text-align: center; font-size: 2em;\">Technical Specification Document</h2>"
-              COVER_PAGE+="<div style=\"height: 100px;\"></div><div style=\"text-align: center;\"><table border=\"1\" style=\"margin: 0 auto; border-collapse: collapse; min-width: 400px;\">"
-              COVER_PAGE+="<tr><th style=\"padding: 12px; background-color: #f2f2f2; text-align: left;\">Author</th><td style=\"padding: 12px;\">$AUTHOR</td></tr>"
-              COVER_PAGE+="<tr><th style=\"padding: 12px; background-color: #f2f2f2; text-align: left;\">Date</th><td style=\"padding: 12px;\">$DATE</td></tr>"
-              COVER_PAGE+="<tr><th style=\"padding: 12px; background-color: #f2f2f2; text-align: left;\">Version</th><td style=\"padding: 12px;\">$IFLOW_VERSION</td></tr>"
+              
+              # --- MODIFIED: FIXED TABLE BORDERS ---
+              COVER_PAGE+="<div style=\"height: 100px;\"></div><div style=\"text-align: center;\">"
+              COVER_PAGE+="<table style=\"margin: 0 auto; border-collapse: collapse; min-width: 500px; border: 1px solid #000;\">"
+              COVER_PAGE+="<tr><th style=\"padding: 12px; border: 1px solid #000; background-color: #f2f2f2; text-align: left;\">Author</th><td style=\"padding: 12px; border: 1px solid #000; text-align: left;\">$AUTHOR</td></tr>"
+              COVER_PAGE+="<tr><th style=\"padding: 12px; border: 1px solid #000; background-color: #f2f2f2; text-align: left;\">Date</th><td style=\"padding: 12px; border: 1px solid #000; text-align: left;\">$DATE</td></tr>"
+              COVER_PAGE+="<tr><th style=\"padding: 12px; border: 1px solid #000; background-color: #f2f2f2; text-align: left;\">Version</th><td style=\"padding: 12px; border: 1px solid #000; text-align: left;\">$IFLOW_VERSION</td></tr>"
               COVER_PAGE+="</table></div>"
 
               FINAL_DOC="${COVER_PAGE}<div style=\"page-break-after: always;\"></div>\n\n${LOGO_HEADER}\n${GENERATED_TEXT_CLEANED}"
