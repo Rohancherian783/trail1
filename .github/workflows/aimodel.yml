@@ -111,20 +111,24 @@ jobs:
               SAP_LOGO="https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/sap_logo.png"
               MM_LOGO="https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/motiveminds_logo.png"
               
+              # HEADER WITH ENHANCED LOGOS
               LOGO_HEADER="<div style=\"width:100%; height: 100px;\"><div style=\"float: left;\"><img src=\"$SAP_LOGO\" width=\"200\" height=\"80\"/></div><div style=\"float: right;\"><img src=\"$MM_LOGO\" width=\"190\" height=\"70\"/></div><div style=\"clear: both;\"></div></div>"
               
+              # --- MODIFIED: GLOBAL STYLE TO FIX MISSING RIGHT BORDERS ---
+              GLOBAL_STYLE="<style>table { width: 98% !important; border-collapse: collapse !important; border: 1px solid #000 !important; margin: 0 auto 20px auto; } th, td { border: 1px solid #000 !important; padding: 12px !important; text-align: left; } th { background-color: #f2f2f2; }</style>"
+
               COVER_PAGE="${LOGO_HEADER}<div style=\"height: 100px;\"></div><h1 style=\"color: ${{ env.HEADING_COLOR }}; text-align: center; font-size: 3.5em;\">$CLEAN_NAME</h1>"
               COVER_PAGE+="<h2 style=\"text-align: center; font-size: 2em;\">Technical Specification Document</h2>"
-              
-              # --- MODIFIED: FIXED TABLE BORDERS ---
               COVER_PAGE+="<div style=\"height: 100px;\"></div><div style=\"text-align: center;\">"
-              COVER_PAGE+="<table style=\"margin: 0 auto; border-collapse: collapse; min-width: 500px; border: 1px solid #000;\">"
-              COVER_PAGE+="<tr><th style=\"padding: 12px; border: 1px solid #000; background-color: #f2f2f2; text-align: left;\">Author</th><td style=\"padding: 12px; border: 1px solid #000; text-align: left;\">$AUTHOR</td></tr>"
-              COVER_PAGE+="<tr><th style=\"padding: 12px; border: 1px solid #000; background-color: #f2f2f2; text-align: left;\">Date</th><td style=\"padding: 12px; border: 1px solid #000; text-align: left;\">$DATE</td></tr>"
-              COVER_PAGE+="<tr><th style=\"padding: 12px; border: 1px solid #000; background-color: #f2f2f2; text-align: left;\">Version</th><td style=\"padding: 12px; border: 1px solid #000; text-align: left;\">$IFLOW_VERSION</td></tr>"
+              
+              # Use the class-less table as it will be styled by GLOBAL_STYLE
+              COVER_PAGE+="<table>"
+              COVER_PAGE+="<tr><th>Author</th><td>$AUTHOR</td></tr>"
+              COVER_PAGE+="<tr><th>Date</th><td>$DATE</td></tr>"
+              COVER_PAGE+="<tr><th>Version</th><td>$IFLOW_VERSION</td></tr>"
               COVER_PAGE+="</table></div>"
 
-              FINAL_DOC="${COVER_PAGE}<div style=\"page-break-after: always;\"></div>\n\n${LOGO_HEADER}\n${GENERATED_TEXT_CLEANED}"
+              FINAL_DOC="${GLOBAL_STYLE}${COVER_PAGE}<div style=\"page-break-after: always;\"></div>\n\n${LOGO_HEADER}\n${GENERATED_TEXT_CLEANED}"
               SECTION_BREAK="\n<div style=\"page-break-before: always;\"></div>\n${LOGO_HEADER}\n"
               FINAL_DOC=$(echo -e "$FINAL_DOC" | sed "s|---TOC-END-PAGE-BREAK---|$(echo "$SECTION_BREAK" | sed 's/[&/]/\\&/g')|g")
               
@@ -143,5 +147,5 @@ jobs:
           git config user.email "actions@github.com"
           PKG_ID="${{ github.event.inputs.package_id }}"
           git add "cpi-artifacts/$PKG_ID/**/*_Summary.md"
-          git commit -m "🤖 DOCS: Detailed Purpose and formatting for $PKG_ID"
+          git commit -m "🤖 DOCS: Fixed table borders and logo alignment for $PKG_ID"
           git push
