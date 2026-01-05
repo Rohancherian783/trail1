@@ -1,4 +1,4 @@
-name: 🤖 Generation Individual iFlow Documentation (Final Layout Fix)
+name: 🤖 Generation Individual iFlow Documentation (Page Alignment Fix)
 
 on:
   workflow_dispatch:
@@ -38,17 +38,14 @@ jobs:
           SYSTEM_PROMPT="You are a senior SAP CPI Technical Architect. Your goal is to produce a high-quality, comprehensive Technical Specification Document.
           
           **CRITICAL CONTENT REQUIREMENTS:**
-          1. **1.1 Purpose (Expanded):** Do not provide a generic summary. Analyze the provided XML/Groovy files to explain the specific business problem this iFlow solves, the trigger mechanism, and the desired technical outcome.
-          2. **1.2 Scope (Expanded):** Detail exactly what is included (e.g., specific endpoints, data transformation logic, target systems) and mention any specific constraints or exclusions.
-          3. **2.2 Integration Components:** Identify every adapter (Sender/Receiver), Script step, and Content Modifier. Describe their specific role in this process.
-          4. **3.1 Scenario Description:** Provide a step-by-step walkthrough of the integration process from the moment a message is received until final delivery/acknowledgment.
+          1. **1.1 Purpose (Expanded):** Analyze the provided XML/Groovy files to explain the business problem.
+          2. **1.2 Scope (Expanded):** Detail endpoints, transformations, and constraints.
+          3. **2.2 Integration Components:** Identify every adapter, Script step, and Content Modifier.
+          4. **3.1 Scenario Description:** Step-by-step walkthrough.
           
           **FORMATTING RULES:**
-          - All Headings (H1/H2) and Subheadings MUST use color '${{ env.HEADING_COLOR }}'.
-          - **Headings (H1/H2) MUST be left-aligned.**
-          - Subheadings MUST be wrapped in: <b style=\"color: ${{ env.HEADING_COLOR }};\">...</b> followed by a NEW LINE.
-          - Use standard Markdown tables for all structured data to ensure they appear in black boxes.
-          - Separate all sections and bullet points with double newlines for readability.
+          - All Headings (H1/H2) MUST use color '${{ env.HEADING_COLOR }}' and be left-aligned.
+          - Subheadings wrapped in: <b style=\"color: ${{ env.HEADING_COLOR }};\">...</b> followed by a NEW LINE.
           - **IMPORTANT:** For section 2.1, provide a valid Mermaid.js graph starting with \`\`\`mermaid and ending with \`\`\`.
 
           **REQUIRED STRUCTURE:**
@@ -74,55 +71,54 @@ jobs:
             FINAL_IFLOW_DIR="$BASE_PKG_DIR/$IFLOW_ROOT_NAME"
             OUTPUT_DOCX="$FINAL_IFLOW_DIR/${IFLOW_ROOT_NAME}_Technical_Specification.docx"
             
+            AUTHOR=$(git log -1 --pretty=format:'%an')
+            DATE=$(date +'%Y-%m-%d')
             EXTRACTED_VERSION=$(grep -rPho '(?<=<Version>)[^<]+' "$IFLOW_DIR" | head -n 1)
             IFLOW_VERSION=${EXTRACTED_VERSION:-"1.0.0"}
 
+            # API Response Generation
             QUERY_FILE="user_query.tmp"
             find "$IFLOW_DIR" -type f \( -name 'iFlowContent.xml' -o -name '*.iflw' \) -exec cat {} + > "$QUERY_FILE"
-
-            # API Call
             PAYLOAD_FILE="payload.json"
             jq -n --arg system "$SYSTEM_PROMPT" --rawfile query "$QUERY_FILE" --arg model "$MODEL_NAME" \
               '{model: $model, messages: [{role: "system", content: $system}, {role: "user", content: $query}], temperature: 0.1}' > "$PAYLOAD_FILE"
-
             API_RESPONSE=$(curl -s -X POST "$API_URL" -H "Content-Type: application/json" -H "Authorization: Bearer $OPENAI_API_KEY" -d @"$PAYLOAD_FILE")
             GENERATED_TEXT=$(echo "$API_RESPONSE" | jq -r ".choices[0].message.content // empty")
             
-            if [ -n "$GENERATED_TEXT" ] && [ "$GENERATED_TEXT" != "null" ]; then
-              # --- 1. Mermaid Rendering ---
+            if [ -n "$GENERATED_TEXT" ]; then
+              # 1. Render Mermaid Diagram
               echo "$GENERATED_TEXT" | sed -n '/```mermaid/,/```/p' | sed 's/```mermaid//g; s/```//g' > architecture.mmd
               if [ -s architecture.mmd ]; then
                 echo '{"args": ["--no-sandbox", "--disable-setuid-sandbox"]}' > puppeteer_config.json
                 mmdc -p puppeteer_config.json -i architecture.mmd -o architecture.png -b transparent
-                # Replace mermaid block with image reference
                 GENERATED_TEXT=$(perl -0777 -pe 's/```mermaid.*?```/![Integration Architecture](architecture.png)/sg' <<< "$GENERATED_TEXT")
               fi
 
-              # --- 2. Cover Page & Page Breaks ---
-              AUTHOR=$(git log -1 --pretty=format:'%an')
-              DATE=$(date +'%Y-%m-%d')
+              # 2. Build Cover Page (STRICT MARKDOWN - NO DIVS)
               SAP_LOGO="https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/sap_logo.png"
               MM_LOGO="https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/motiveminds_logo.png"
               
-              # Logo Header
-              LOGO_HTML="<div style='display: flex; justify-content: space-between;'><img src='$SAP_LOGO' width='120'/><img src='$MM_LOGO' width='150'/></div>"
+              # Standard Logo Header
+              LOGO_LINE="![]($SAP_LOGO){width=100px} \hfill ![]($MM_LOGO){width=130px}"
 
-              # Cover Page (Clean Markdown for Word)
-              COVER_PAGE="$LOGO_HTML\n\n<div style='text-align: center; margin-top: 100px;'>\n\n# <span style='color: ${{ env.HEADING_COLOR }}'>$IFLOW_ROOT_NAME</span>\n\n### Technical Specification Document\n\n</div>\n\n| | |\n|:---|:---|\n| **Author** | $AUTHOR |\n| **Date** | $DATE |\n| **Version** | $IFLOW_VERSION |\n\n\pagebreak"
+              # Cover Page with exact alignment
+              # Using empty lines and Markdown table to replicate the screenshot
+              COVER_PAGE="$LOGO_LINE\n\n\n\n# <p align='center'><span style='color: ${{ env.HEADING_COLOR }}'>$IFLOW_ROOT_NAME</span></p>\n\n<p align='center'>Technical Specification Document</p>\n\n\n\n| | |\n|:---|:---|\n| **Author** | $AUTHOR |\n| **Date** | $DATE |\n| **Version** | $IFLOW_VERSION |\n\n\pagebreak"
 
-              # Replacing the TOC marker with a Page Break + Logo using Perl (safer than sed)
-              PAGE_TRANSITION="\pagebreak\n\n$LOGO_HTML\n\n"
-              FINAL_BODY=$(perl -pe "s|---TOC-END-PAGE-BREAK---|$PAGE_TRANSITION|g" <<< "$GENERATED_TEXT")
+              # 3. Handle TOC Page Break
+              # We replace the marker with a pagebreak and re-insert the logos for the next page
+              TOC_TRANSITION="\pagebreak\n\n$LOGO_LINE\n\n"
+              FINAL_BODY=$(perl -pe "s|---TOC-END-PAGE-BREAK---|$TOC_TRANSITION|g" <<< "$GENERATED_TEXT")
 
-              # Final Assembly
-              echo -e "$COVER_PAGE\n\n$LOGO_HTML\n\n$FINAL_BODY" > temp_render.md
+              # 4. Final Document Assembly
+              echo -e "$COVER_PAGE\n\n$LOGO_LINE\n\n$FINAL_BODY" > render.md
               
-              pandoc temp_render.md -o "$OUTPUT_DOCX"
+              # Convert using Pandoc with --standalone to ensure page breaks work
+              pandoc render.md -o "$OUTPUT_DOCX"
               
-              rm -f temp_render.md architecture.mmd architecture.png puppeteer_config.json
+              rm -f render.md architecture.mmd architecture.png puppeteer_config.json "$QUERY_FILE" "$PAYLOAD_FILE"
               ALL_DOCS_GENERATED=true
             fi
-            rm -f "$QUERY_FILE" "$PAYLOAD_FILE"
           done < <(find "$BASE_PKG_DIR" -type f \( -name 'iFlowContent.xml' -o -name '*.iflw' \) -printf '%h\n' | sort -u)
           
           echo "docs_generated=$ALL_DOCS_GENERATED" >> $GITHUB_OUTPUT
@@ -133,7 +129,7 @@ jobs:
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git add "cpi-artifacts/${{ github.event.inputs.package_id }}/**/*.docx"
-          git commit -m "🤖 DOCS: Fixed sed error and aligned cover page layout"
+          git commit -m "🤖 DOCS: Fixed layout and forced TOC page break"
           git push
 
 
