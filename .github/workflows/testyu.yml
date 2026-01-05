@@ -1,4 +1,4 @@
-name: 🤖 Generation Individual iFlow Documentation (Logo & Layout Fix)
+name: 🤖 Generation Individual iFlow Documentation (Fixed Headers)
 
 on:
   workflow_dispatch:
@@ -76,16 +76,12 @@ jobs:
             EXTRACTED_VERSION=$(grep -rPho '(?<=<Version>)[^<]+' "$IFLOW_DIR" | head -n 1)
             IFLOW_VERSION=${EXTRACTED_VERSION:-"1.0.0"}
 
-            # Setup Logo Assets
+            # Logo Setup
             SAP_LOGO="https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/sap_logo.png"
             MM_LOGO="https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/motiveminds_logo.png"
             
-            # Create a simple Header Table (SAP Left, MM Right)
-            # We use a temp file to store this to avoid shell escaping issues
-            echo "| ![]($SAP_LOGO){width=100px} | | <p align='right'>![]($MM_LOGO){width=130px}</p> |" > header.txt
-            echo "|:---|:---:|---:|" >> header.txt
-            echo "" >> header.txt
-            HEADER_CONTENT=$(cat header.txt)
+            # Use a simpler Logo Header that Pandoc handles well for Word
+            LOGO_HEADER="| ![]($SAP_LOGO){width=100px} | | <p align='right'>![]($MM_LOGO){width=130px}</p> |\n|:---|:---:|---:|\n\n"
 
             QUERY_FILE="user_query.tmp"
             find "$IFLOW_DIR" -type f \( -name 'iFlowContent.xml' -o -name '*.iflw' \) -exec cat {} + > "$QUERY_FILE"
@@ -98,7 +94,7 @@ jobs:
             GENERATED_TEXT=$(echo "$API_RESPONSE" | jq -r ".choices[0].message.content // empty")
             
             if [ -n "$GENERATED_TEXT" ]; then
-              # 1. Mermaid Rendering
+              # Mermaid Rendering logic
               echo "$GENERATED_TEXT" | sed -n '/```mermaid/,/```/p' | sed 's/```mermaid//g; s/```//g' > architecture.mmd
               if [ -s architecture.mmd ]; then
                 echo '{"args": ["--no-sandbox", "--disable-setuid-sandbox"]}' > puppeteer_config.json
@@ -106,32 +102,22 @@ jobs:
                 GENERATED_TEXT=$(perl -0777 -pe 's/```mermaid.*?```/![Integration Architecture](architecture.png)/sg' <<< "$GENERATED_TEXT")
               fi
 
-              # 2. Cover Page Generation
-              {
-                cat header.txt
-                echo -e "\n\n<br><br>\n\n# <center><span style='color: ${{ env.HEADING_COLOR }}'>$IFLOW_ROOT_NAME</span></center>\n"
-                echo -e "### <center>Technical Specification Document</center>\n\n<br><br>\n"
-                echo "| | |"
-                echo "|:---|:---|"
-                echo "| **Author** | $AUTHOR |"
-                echo "| **Date** | $DATE |"
-                echo "| **Version** | $IFLOW_VERSION |"
-                echo -e "\n\pagebreak\n"
-              } > full_doc.md
-
-              # 3. Add Content with Header Injections
-              # Instead of complex regex, we use a simple loop or multi-step sed
-              TOC_TRANSITION="\pagebreak\n\n$HEADER_CONTENT\n\n"
+              # Building the Document using cat to avoid Shell syntax errors
+              echo -e "$LOGO_HEADER" > final.md
+              echo -e "\n\n# <p align='center'><span style='color: ${{ env.HEADING_COLOR }}'>$IFLOW_ROOT_NAME</span></p>\n" >> final.md
+              echo -e "### <p align='center'>Technical Specification Document</p>\n\n" >> final.md
+              echo -e "| | |\n|:---|:---|\n| **Author** | $AUTHOR |\n| **Date** | $DATE |\n| **Version** | $IFLOW_VERSION |\n\n\pagebreak\n" >> final.md
               
-              # Safely replace TOC marker and inject headers before H1 tags
+              # Append body and replace markers safely
+              # We use '@' as a delimiter for sed because the content contains '|' and '/'
+              echo -e "$LOGO_HEADER" >> final.md
               echo "$GENERATED_TEXT" | \
-              perl -0777 -pe "s|---TOC-END-PAGE-BREAK---|\\pagebreak\n\n|g" | \
-              perl -0777 -pe "s|<h1|$HEADER_CONTENT\n<h1|g" >> full_doc.md
+              sed "s|---TOC-END-PAGE-BREAK---|\\pagebreak\n\n$LOGO_HEADER|g" | \
+              sed "s|<h1|$LOGO_HEADER\n<h1|g" >> final.md
 
-              # 4. Final Render
-              pandoc full_doc.md -o "$OUTPUT_DOCX"
+              pandoc final.md -o "$OUTPUT_DOCX"
               
-              rm -f full_doc.md header.txt architecture.mmd architecture.png puppeteer_config.json "$QUERY_FILE" "$PAYLOAD_FILE"
+              rm -f final.md architecture.mmd architecture.png puppeteer_config.json "$QUERY_FILE" "$PAYLOAD_FILE"
               ALL_DOCS_GENERATED=true
             fi
           done < <(find "$BASE_PKG_DIR" -type f \( -name 'iFlowContent.xml' -o -name '*.iflw' \) -printf '%h\n' | sort -u)
@@ -144,7 +130,7 @@ jobs:
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git add "cpi-artifacts/${{ github.event.inputs.package_id }}/**/*.docx"
-          git commit -m "🤖 DOCS: Logos on every page and fixed cover page layout"
+          git commit -m "🤖 DOCS: Logos on every page and fixed formatting"
           git push
 
 
