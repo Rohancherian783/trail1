@@ -1,4 +1,4 @@
-name: 🤖 Generation Individual iFlow Documentation (Final Layout Alignment)
+name: 🤖 Generation Individual iFlow Documentation (Final Layout Fix)
 
 on:
   workflow_dispatch:
@@ -73,7 +73,6 @@ jobs:
             IFLOW_ROOT_NAME=$(echo "$IFLOW_DIR" | sed "s|^$BASE_PKG_DIR/||" | cut -d/ -f1)
             FINAL_IFLOW_DIR="$BASE_PKG_DIR/$IFLOW_ROOT_NAME"
             OUTPUT_DOCX="$FINAL_IFLOW_DIR/${IFLOW_ROOT_NAME}_Technical_Specification.docx"
-            TEMP_MD="aligned_content.md"
             
             EXTRACTED_VERSION=$(grep -rPho '(?<=<Version>)[^<]+' "$IFLOW_DIR" | head -n 1)
             IFLOW_VERSION=${EXTRACTED_VERSION:-"1.0.0"}
@@ -81,6 +80,7 @@ jobs:
             QUERY_FILE="user_query.tmp"
             find "$IFLOW_DIR" -type f \( -name 'iFlowContent.xml' -o -name '*.iflw' \) -exec cat {} + > "$QUERY_FILE"
 
+            # API Call
             PAYLOAD_FILE="payload.json"
             jq -n --arg system "$SYSTEM_PROMPT" --rawfile query "$QUERY_FILE" --arg model "$MODEL_NAME" \
               '{model: $model, messages: [{role: "system", content: $system}, {role: "user", content: $query}], temperature: 0.1}' > "$PAYLOAD_FILE"
@@ -88,51 +88,38 @@ jobs:
             API_RESPONSE=$(curl -s -X POST "$API_URL" -H "Content-Type: application/json" -H "Authorization: Bearer $OPENAI_API_KEY" -d @"$PAYLOAD_FILE")
             GENERATED_TEXT=$(echo "$API_RESPONSE" | jq -r ".choices[0].message.content // empty")
             
-            if [ -n "$GENERATED_TEXT" ]; then
-              # Render Mermaid
+            if [ -n "$GENERATED_TEXT" ] && [ "$GENERATED_TEXT" != "null" ]; then
+              # --- 1. Mermaid Rendering ---
               echo "$GENERATED_TEXT" | sed -n '/```mermaid/,/```/p' | sed 's/```mermaid//g; s/```//g' > architecture.mmd
               if [ -s architecture.mmd ]; then
                 echo '{"args": ["--no-sandbox", "--disable-setuid-sandbox"]}' > puppeteer_config.json
                 mmdc -p puppeteer_config.json -i architecture.mmd -o architecture.png -b transparent
-                GENERATED_TEXT=$(echo "$GENERATED_TEXT" | sed '/```mermaid/,/```/c\![Integration Architecture](architecture.png)')
+                # Replace mermaid block with image reference
+                GENERATED_TEXT=$(perl -0777 -pe 's/```mermaid.*?```/![Integration Architecture](architecture.png)/sg' <<< "$GENERATED_TEXT")
               fi
 
+              # --- 2. Cover Page & Page Breaks ---
               AUTHOR=$(git log -1 --pretty=format:'%an')
               DATE=$(date +'%Y-%m-%d')
               SAP_LOGO="https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/sap_logo.png"
               MM_LOGO="https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/motiveminds_logo.png"
               
-              # Standard Markdown-based Cover Page (Fixes Screenshot 1 issue)
-              COVER_PAGE="<div style='text-align: center;'>
-              <h1 style='color: ${{ env.HEADING_COLOR }}; font-size: 36pt;'>$IFLOW_ROOT_NAME</h1>
-              <h2 style='font-weight: normal;'>Technical Specification Document</h2>
-              <br><br>
-              </div>
+              # Logo Header
+              LOGO_HTML="<div style='display: flex; justify-content: space-between;'><img src='$SAP_LOGO' width='120'/><img src='$MM_LOGO' width='150'/></div>"
 
-              | | |
-              |:---|:---|
-              | **Author** | $AUTHOR |
-              | **Date** | $DATE |
-              | **Version** | $IFLOW_VERSION |
+              # Cover Page (Clean Markdown for Word)
+              COVER_PAGE="$LOGO_HTML\n\n<div style='text-align: center; margin-top: 100px;'>\n\n# <span style='color: ${{ env.HEADING_COLOR }}'>$IFLOW_ROOT_NAME</span>\n\n### Technical Specification Document\n\n</div>\n\n| | |\n|:---|:---|\n| **Author** | $AUTHOR |\n| **Date** | $DATE |\n| **Version** | $IFLOW_VERSION |\n\n\pagebreak"
 
-              \pagebreak"
+              # Replacing the TOC marker with a Page Break + Logo using Perl (safer than sed)
+              PAGE_TRANSITION="\pagebreak\n\n$LOGO_HTML\n\n"
+              FINAL_BODY=$(perl -pe "s|---TOC-END-PAGE-BREAK---|$PAGE_TRANSITION|g" <<< "$GENERATED_TEXT")
 
-              # Format Logo Header for internal pages
-              LOGO_HEADER="<div style='display: flex; justify-content: space-between;'>
-                <img src='$SAP_LOGO' width='120' />
-                <img src='$MM_LOGO' width='150' />
-              </div>"
-
-              # Insert Logo Header and Page Break after TOC
-              PAGE_TRANSITION="\pagebreak\n\n$LOGO_HEADER\n\n"
-              PROCESSED_CONTENT=$(echo -e "$GENERATED_TEXT" | sed "s|---TOC-END-PAGE-BREAK---|$(echo "$PAGE_TRANSITION" | sed 's/[&/]/\\&/g')|g")
-
-              # Assemble Final Markdown
-              echo -e "$LOGO_HEADER\n\n$COVER_PAGE\n\n$LOGO_HEADER\n\n$PROCESSED_CONTENT" > "$TEMP_MD"
+              # Final Assembly
+              echo -e "$COVER_PAGE\n\n$LOGO_HTML\n\n$FINAL_BODY" > temp_render.md
               
-              pandoc "$TEMP_MD" -o "$OUTPUT_DOCX"
+              pandoc temp_render.md -o "$OUTPUT_DOCX"
               
-              rm -f "$TEMP_MD" architecture.mmd architecture.png puppeteer_config.json
+              rm -f temp_render.md architecture.mmd architecture.png puppeteer_config.json
               ALL_DOCS_GENERATED=true
             fi
             rm -f "$QUERY_FILE" "$PAYLOAD_FILE"
@@ -146,9 +133,8 @@ jobs:
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git add "cpi-artifacts/${{ github.event.inputs.package_id }}/**/*.docx"
-          git commit -m "🤖 DOCS: Fixed Cover Page and TOC Page Breaks"
+          git commit -m "🤖 DOCS: Fixed sed error and aligned cover page layout"
           git push
-
 
 
 
