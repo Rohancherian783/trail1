@@ -1,4 +1,4 @@
-name: 🤖 Generation Individual iFlow Documentation (Word with Auto-Diagrams)
+name: 🤖 Generation Individual iFlow Documentation (Word with Diagrams)
 
 on:
   workflow_dispatch:
@@ -20,7 +20,8 @@ jobs:
       - name: Install Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y jq pandoc
+          # Install Pandoc and Chrome dependencies for Mermaid rendering
+          sudo apt-get install -y jq pandoc libgbm1 libasound2 libnss3 libxss1 libatk-bridge2.0-0 libgtk-3-0
           npm install -g @mermaid-js/mermaid-cli
 
       - name: Generate Individual iFlow Documentation via OpenAI API
@@ -36,43 +37,56 @@ jobs:
           BASE_PKG_DIR="cpi-artifacts/$PKG_ID"
           
           if [ ! -d "$BASE_PKG_DIR" ]; then
-            echo "::error::Package directory not found"
+            echo "::error::Package directory not found at: $BASE_PKG_DIR"
             exit 1
           fi
 
-          # --- SYSTEM PROMPT (Preserved from your reference) ---
+          # --- SYSTEM PROMPT (Preserved exact structure/prompts) ---
           SYSTEM_PROMPT="You are a senior SAP CPI Technical Architect. Your goal is to produce a high-quality, comprehensive Technical Specification Document.
           
           **CRITICAL CONTENT REQUIREMENTS:**
-          1. **1.1 Purpose (Expanded):** Analyze XML/Groovy files to explain business problems and triggers.
-          2. **1.2 Scope (Expanded):** Detail endpoints, transformation logic, and constraints.
-          3. **2.2 Integration Components:** Identify every adapter, Script step, and Content Modifier.
-          4. **3.1 Scenario Description:** Step-by-step walkthrough.
+          1. **1.1 Purpose (Expanded):** Do not provide a generic summary. Analyze the provided XML/Groovy files to explain the specific business problem this iFlow solves, the trigger mechanism, and the desired technical outcome.
+          2. **1.2 Scope (Expanded):** Detail exactly what is included (endpoints, transformation, target systems).
+          3. **2.1 Integration Architecture:** You MUST provide a valid Mermaid.js graph code starting with \`\`\`mermaid and ending with \`\`\`.
+          4. **2.2 Integration Components:** Identify every adapter (Sender/Receiver), Script step, and Content Modifier. Describe their specific role in this process.
+          5. **3.1 Scenario Description:** Provide a step-by-step walkthrough.
           
           **FORMATTING RULES:**
           - All Headings (H1/H2) MUST use color '${{ env.HEADING_COLOR }}' and be left-aligned.
-          - Subheadings wrapped in: <b style=\"color: ${{ env.HEADING_COLOR }};\">...</b>
-          - **IMPORTANT:** For Section 2.1 (Integration Architecture), you MUST provide a valid Mermaid.js graph starting with \`\`\`mermaid and ending with \`\`\`.
+          - Subheadings wrapped in: <b style=\"color: ${{ env.HEADING_COLOR }};\">...</b> followed by a NEW LINE.
+          - Use standard Markdown tables for all structured data.
 
           **REQUIRED STRUCTURE:**
-          (Standard Table of Contents structure preserved...)"
+          <h1 style=\"color: ${{ env.HEADING_COLOR }}; font-size: 2.5em; text-align: left;\">Table of Contents</h1>
+          1. Introduction <br>
+          &nbsp;&nbsp;&nbsp; 1.1 Purpose <br>
+          &nbsp;&nbsp;&nbsp; 1.2 Scope <br>
+          2. Integration Overview <br>
+          &nbsp;&nbsp;&nbsp; 2.1 Integration Architecture <br>
+          &nbsp;&nbsp;&nbsp; 2.2 Integration Components <br>
+          3. Integration Scenarios <br>
+          &nbsp;&nbsp;&nbsp; 3.1 Scenario Description <br>
+          &nbsp;&nbsp;&nbsp; 3.2 Data Flows <br>
+          &nbsp;&nbsp;&nbsp; 3.3 Security Requirements <br>
+          4. Error Handling and Logging <br>
+          5. Testing Validation <br>
+          6. Reference Documents <br>
+          ---TOC-END-PAGE-BREAK---"
 
           ALL_DOCS_GENERATED=false
           while IFS= read -r IFLOW_DIR; do
             IFLOW_ROOT_NAME=$(echo "$IFLOW_DIR" | sed "s|^$BASE_PKG_DIR/||" | cut -d/ -f1)
             FINAL_IFLOW_DIR="$BASE_PKG_DIR/$IFLOW_ROOT_NAME"
             OUTPUT_DOCX="$FINAL_IFLOW_DIR/${IFLOW_ROOT_NAME}_Technical_Specification.docx"
-            TEMP_MD="full_content.md"
+            TEMP_MD="doc_input.md"
             
             EXTRACTED_VERSION=$(grep -rPho '(?<=<Version>)[^<]+' "$IFLOW_DIR" | head -n 1)
             IFLOW_VERSION=${EXTRACTED_VERSION:-"1.0.0"}
 
-            # Prepare User Query
             QUERY_FILE="user_query.tmp"
-            echo -e "Generate report for iFlow '$IFLOW_ROOT_NAME'. Dive deep into:\n" > "$QUERY_FILE"
+            echo -e "Generate a comprehensive technical report for iFlow '$IFLOW_ROOT_NAME'.\n" > "$QUERY_FILE"
             find "$IFLOW_DIR" -type f \( -name 'iFlowContent.xml' -o -name '*.groovy' -o -name '*.xslt' -o -name '*.iflw' \) -exec cat {} + >> "$QUERY_FILE"
 
-            # OpenAI API Call
             PAYLOAD_FILE="payload.json"
             jq -n --arg system "$SYSTEM_PROMPT" --rawfile query "$QUERY_FILE" --arg model "$MODEL_NAME" \
               '{model: $model, messages: [{role: "system", content: $system}, {role: "user", content: $query}], temperature: 0.1}' > "$PAYLOAD_FILE"
@@ -80,44 +94,52 @@ jobs:
             API_RESPONSE=$(curl -s -X POST "$API_URL" -H "Content-Type: application/json" -H "Authorization: Bearer $OPENAI_API_KEY" -d @"$PAYLOAD_FILE")
             GENERATED_TEXT=$(echo "$API_RESPONSE" | jq -r ".choices[0].message.content // empty")
             
-            if [ -n "$GENERATED_TEXT" ]; then
-              # 1. Extract and Render Mermaid Diagram
+            if [ -n "$GENERATED_TEXT" ] && [ "$GENERATED_TEXT" != "null" ]; then
+              # --- DIAGRAM RENDERING ---
+              # Extract mermaid code and render it to PNG with --no-sandbox
               echo "$GENERATED_TEXT" | sed -n '/```mermaid/,/```/p' | sed 's/```mermaid//g; s/```//g' > architecture.mmd
               if [ -s architecture.mmd ]; then
-                mmdc -i architecture.mmd -o architecture.png -b transparent
-                # Replace the mermaid code block in the text with the actual image reference for Pandoc
+                # The --puppeteer-config is required to bypass sandbox issues in GitHub Actions
+                echo '{"args": ["--no-sandbox"]}' > puppeteer_config.json
+                mmdc -p puppeteer_config.json -i architecture.mmd -o architecture.png -b transparent -w 1200
+                # Replace code block with image reference
                 GENERATED_TEXT=$(echo "$GENERATED_TEXT" | sed '/```mermaid/,/```/c\![Integration Architecture](architecture.png)')
               fi
 
-              # 2. Setup Header & Styles
+              AUTHOR=$(git log -1 --pretty=format:'%an')
+              DATE=$(date +'%Y-%m-%d')
               SAP_LOGO="https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/sap_logo.png"
               MM_LOGO="https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/motiveminds_logo.png"
               
-              LOGO_HEADER="<div style='width:100%; clear:both;'><img src='$SAP_LOGO' width='100' style='float:left'/><img src='$MM_LOGO' width='120' style='float:right'/></div><div style='clear:both'></div>"
+              LOGO_HEADER="<div style='width:100%; height: 60px; margin-bottom: 20px;'><div style='float: left;'><img src='$SAP_LOGO' style='width: 120px;'/></div><div style='float: right;'><img src='$MM_LOGO' style='width: 150px;'/></div><div style='clear: both;'></div></div>"
               
-              # 3. Create Boxed Cover Page
-              AUTHOR=$(git log -1 --pretty=format:'%an')
-              DATE=$(date +'%Y-%m-%d')
-              COVER_PAGE="<div style='border: 3px solid ${{ env.HEADING_COLOR }}; padding: 40px; text-align: center;'>
-                            <h1 style='color: ${{ env.HEADING_COLOR }};'>$IFLOW_ROOT_NAME</h1>
-                            <h2>Technical Specification Document</h2>
+              # Boxed Layout for Cover
+              COVER_PAGE="<div style='border: 4px double ${{ env.HEADING_COLOR }}; padding: 30px; text-align: center;'>
+                            <h1 style='color: ${{ env.HEADING_COLOR }}; font-size: 3em;'>$IFLOW_ROOT_NAME</h1>
+                            <p style='font-size: 1.5em;'>Technical Specification Document</p>
                             <br><br>
-                            <table style='width:100%; border:1px solid black;'>
+                            <table style='width: 70%; margin: 0 auto; border: 1px solid black;'>
                               <tr><td><b>Author</b></td><td>$AUTHOR</td></tr>
                               <tr><td><b>Date</b></td><td>$DATE</td></tr>
                               <tr><td><b>Version</b></td><td>$IFLOW_VERSION</td></tr>
                             </table>
                           </div>"
 
-              # 4. Final Assembly for Word
-              # We repeat the LOGO_HEADER after every page break
+              # Assemble Content
               PAGE_BREAK="<div style='page-break-after: always;'></div>"
-              echo -e "$LOGO_HEADER\n$COVER_PAGE\n$PAGE_BREAK\n$LOGO_HEADER\n$GENERATED_TEXT" > "$TEMP_MD"
+              # Pandoc needs the header before every major section to act as a page header
+              FINAL_MD="${LOGO_HEADER}\n${COVER_PAGE}\n${PAGE_BREAK}\n${LOGO_HEADER}\n${GENERATED_TEXT}"
+              
+              # Replace TOC break with real Page Break + Logo
+              SECTION_BREAK="${PAGE_BREAK}\n${LOGO_HEADER}\n"
+              FINAL_MD=$(echo -e "$FINAL_MD" | sed "s|---TOC-END-PAGE-BREAK---|$(echo "$SECTION_BREAK" | sed 's/[&/]/\\&/g')|g")
+              
+              echo -e "$FINAL_MD" > "$TEMP_MD"
 
-              # 5. Pandoc Conversion
+              # Convert to DOCX
               pandoc "$TEMP_MD" -o "$OUTPUT_DOCX"
               
-              rm -f "$TEMP_MD" architecture.mmd architecture.png
+              rm -f "$TEMP_MD" architecture.mmd architecture.png puppeteer_config.json
               ALL_DOCS_GENERATED=true
             fi
             rm -f "$QUERY_FILE" "$PAYLOAD_FILE"
@@ -131,7 +153,7 @@ jobs:
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git add "cpi-artifacts/${{ github.event.inputs.package_id }}/**/*.docx"
-          git commit -m "🤖 DOCS: Word document with rendered architecture images"
+          git commit -m "🤖 DOCS: Generated Word Doc with Rendered Architecture for ${{ github.event.inputs.package_id }}"
           git push
 
 
