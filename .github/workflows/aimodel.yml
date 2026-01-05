@@ -43,16 +43,16 @@ jobs:
           SYSTEM_PROMPT="You are a senior SAP CPI Technical Architect. Your goal is to produce a high-quality, comprehensive Technical Specification Document.
           
           **CRITICAL CONTENT REQUIREMENTS:**
-          1. **1.1 Purpose (Expanded):** Do not provide a generic summary. Analyze the provided XML/Groovy files to explain the specific business problem this iFlow solves, the trigger mechanism, and the desired technical outcome.
-          2. **1.2 Scope (Expanded):** Detail exactly what is included (e.g., specific endpoints, data transformation logic, target systems) and mention any specific constraints or exclusions.
-          3. **2.2 Integration Components:** Identify every adapter (Sender/Receiver), Script step, and Content Modifier. Describe their specific role in this process.
-          4. **3.1 Scenario Description:** Provide a step-by-step walkthrough of the integration process from the moment a message is received until final delivery/acknowledgment.
+          1. **1.1 Purpose (Expanded):** Explain the specific business problem this iFlow solves, the trigger mechanism, and technical outcome based on artifacts.
+          2. **1.2 Scope (Expanded):** Detail endpoints, data transformation logic, and target systems.
+          3. **2.2 Integration Components:** Identify adapters, Scripts, and Content Modifiers. Describe their roles.
+          4. **3.1 Scenario Description:** Provide a step-by-step walkthrough of the integration process.
           
           **FORMATTING RULES:**
           - All Headings (H1/H2) and Subheadings MUST use color '${{ env.HEADING_COLOR }}'.
           - Subheadings MUST be wrapped in: <b style=\"color: ${{ env.HEADING_COLOR }};\">...</b> followed by a NEW LINE.
-          - Use standard Markdown tables for all structured data to ensure they appear in black boxes.
-          - Separate all sections and bullet points with double newlines for readability.
+          - Use standard Markdown tables for all structured data.
+          - Separate all sections with double newlines.
 
           **REQUIRED STRUCTURE:**
           <h1 style=\"color: ${{ env.HEADING_COLOR }}; font-size: 2.5em;\">Table of Contents</h1>
@@ -72,9 +72,9 @@ jobs:
           ---TOC-END-PAGE-BREAK---
           <h1 style=\"color: ${{ env.HEADING_COLOR }};\">1. Introduction</h1>
           <b style=\"color: ${{ env.HEADING_COLOR }};\">1.1 Purpose:</b>
-          [Generate detailed, technical business logic explanation]
+          [Detailed content]
           <b style=\"color: ${{ env.HEADING_COLOR }};\">1.2 Scope:</b>
-          [Generate detailed technical boundaries and requirements]
+          [Detailed content]
           <h1 style=\"color: ${{ env.HEADING_COLOR }};\">2. Integration Overview</h1>
           <b style=\"color: ${{ env.HEADING_COLOR }};\">2.1 Integration Architecture:</b> (Mermaid graph)
           <b style=\"color: ${{ env.HEADING_COLOR }};\">2.2 Integration Components:</b>
@@ -100,7 +100,7 @@ jobs:
             IFLOW_VERSION=${EXTRACTED_VERSION:-"1.0.0"}
 
             QUERY_FILE="user_query.tmp"
-            echo -e "Generate a comprehensive technical report for iFlow '$IFLOW_ROOT_NAME'. Dive deep into the logic found in these files:\n" > "$QUERY_FILE"
+            echo -e "Generate report for iFlow '$IFLOW_ROOT_NAME'.\n" > "$QUERY_FILE"
             while IFS= read -r -d '' INPUT_FILE; do
               echo -e "\n--- ARTIFACT: $INPUT_FILE ---\n" >> "$QUERY_FILE"
               cat "$INPUT_FILE" >> "$QUERY_FILE"
@@ -122,9 +122,11 @@ jobs:
               SAP_LOGO="https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/sap_logo.png"
               MM_LOGO="https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/motiveminds_logo.png"
               
-              LOGO_HEADER="<div style=\"width:100%; height: 60px; margin-bottom: 20px;\"><div style=\"float: left;\"><img src=\"$SAP_LOGO\" style=\"width: 160px; height: auto;\"/></div><div style=\"float: right;\"><img src=\"$MM_LOGO\" style=\"width: 150px; height: auto;\"/></div><div style=\"clear: both;\"></div></div>"
+              # MODIFIED: SAP Logo reduced to 140px
+              LOGO_HEADER="<div style=\"width:100%; height: 60px; margin-bottom: 20px;\"><div style=\"float: left;\"><img src=\"$SAP_LOGO\" style=\"width: 140px; height: auto;\"/></div><div style=\"float: right;\"><img src=\"$MM_LOGO\" style=\"width: 150px; height: auto;\"/></div><div style=\"clear: both;\"></div></div>"
               
-              GLOBAL_STYLE="<style>table { width: 100% !important; border-collapse: collapse !important; border: 1px solid #000 !important; margin-bottom: 20px; } th, td { border: 1px solid #000 !important; padding: 10px !important; text-align: left; } th { background-color: #f2f2f2; font-weight: bold; }</style>"
+              # MODIFIED: Width set to 98% and box-sizing added to fix missing right border
+              GLOBAL_STYLE="<style>table { width: 98% !important; border-collapse: collapse !important; border: 1px solid #000 !important; margin-bottom: 20px; table-layout: fixed; box-sizing: border-box; } th, td { border: 1px solid #000 !important; padding: 10px !important; text-align: left; word-wrap: break-word; } th { background-color: #f2f2f2; font-weight: bold; }</style>"
 
               COVER_PAGE="${LOGO_HEADER}<div style=\"height: 120px;\"></div><h1 style=\"color: ${{ env.HEADING_COLOR }}; text-align: center; font-size: 3.5em; margin-bottom: 10px;\">$CLEAN_NAME</h1>"
               COVER_PAGE+="<h2 style=\"text-align: center; font-size: 1.8em; font-weight: normal; margin-top: 0;\">Technical Specification Document</h2>"
@@ -155,5 +157,5 @@ jobs:
           git config user.email "actions@github.com"
           PKG_ID="${{ github.event.inputs.package_id }}"
           git add "cpi-artifacts/$PKG_ID/**/*_Summary.md"
-          git commit -m "🤖 DOCS: Enhanced technical content depth for $PKG_ID"
+          git commit -m "🤖 DOCS: Fixed table borders and logo sizing for $PKG_ID"
           git push
