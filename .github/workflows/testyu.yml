@@ -1,4 +1,4 @@
-name: 🤖 Generation Individual iFlow Documentation (Fixed Headers)
+name: 🤖 Generation Individual iFlow Documentation (Final Robust Layout)
 
 on:
   workflow_dispatch:
@@ -20,7 +20,7 @@ jobs:
       - name: Install Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y jq pandoc libgbm1 libasound2t64 libnss3 libxss1 libatk-bridge2.0-0 libgtk-3-0
+          sudo apt-get install -y jq pandoc libgbm1 libasound2t64 libnss3 libxss1 libatk-bridge2.0-0 libgtk-3-0 python3
           npm install -g @mermaid-js/mermaid-cli
 
       - name: Generate Individual iFlow Documentation via OpenAI API
@@ -30,6 +30,7 @@ jobs:
           PKG_ID: ${{ github.event.inputs.package_id }}
           HEADING_COLOR: "#1f4e79"
         run: |
+          # --- Setup Configuration ---
           API_URL="https://api.openai.com/v1/chat/completions"
           MODEL_NAME="gpt-4o-mini"
           BASE_PKG_DIR="cpi-artifacts/$PKG_ID"
@@ -76,48 +77,61 @@ jobs:
             EXTRACTED_VERSION=$(grep -rPho '(?<=<Version>)[^<]+' "$IFLOW_DIR" | head -n 1)
             IFLOW_VERSION=${EXTRACTED_VERSION:-"1.0.0"}
 
-            # Logo Setup
-            SAP_LOGO="https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/sap_logo.png"
-            MM_LOGO="https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/motiveminds_logo.png"
+            # Gather Code Context
+            find "$IFLOW_DIR" -type f \( -name 'iFlowContent.xml' -o -name '*.iflw' \) -exec cat {} + > query_context.txt
             
-            # Use a simpler Logo Header that Pandoc handles well for Word
-            LOGO_HEADER="| ![]($SAP_LOGO){width=100px} | | <p align='right'>![]($MM_LOGO){width=130px}</p> |\n|:---|:---:|---:|\n\n"
-
-            QUERY_FILE="user_query.tmp"
-            find "$IFLOW_DIR" -type f \( -name 'iFlowContent.xml' -o -name '*.iflw' \) -exec cat {} + > "$QUERY_FILE"
+            # API Request
+            jq -n --arg system "$SYSTEM_PROMPT" --rawfile query query_context.txt --arg model "$MODEL_NAME" \
+              '{model: $model, messages: [{role: "system", content: $system}, {role: "user", content: $query}], temperature: 0.1}' > payload.json
             
-            PAYLOAD_FILE="payload.json"
-            jq -n --arg system "$SYSTEM_PROMPT" --rawfile query "$QUERY_FILE" --arg model "$MODEL_NAME" \
-              '{model: $model, messages: [{role: "system", content: $system}, {role: "user", content: $query}], temperature: 0.1}' > "$PAYLOAD_FILE"
-            
-            API_RESPONSE=$(curl -s -X POST "$API_URL" -H "Content-Type: application/json" -H "Authorization: Bearer $OPENAI_API_KEY" -d @"$PAYLOAD_FILE")
+            API_RESPONSE=$(curl -s -X POST "$API_URL" -H "Content-Type: application/json" -H "Authorization: Bearer $OPENAI_API_KEY" -d @payload.json)
             GENERATED_TEXT=$(echo "$API_RESPONSE" | jq -r ".choices[0].message.content // empty")
             
             if [ -n "$GENERATED_TEXT" ]; then
-              # Mermaid Rendering logic
+              # 1. Mermaid Rendering
               echo "$GENERATED_TEXT" | sed -n '/```mermaid/,/```/p' | sed 's/```mermaid//g; s/```//g' > architecture.mmd
               if [ -s architecture.mmd ]; then
                 echo '{"args": ["--no-sandbox", "--disable-setuid-sandbox"]}' > puppeteer_config.json
                 mmdc -p puppeteer_config.json -i architecture.mmd -o architecture.png -b transparent
-                GENERATED_TEXT=$(perl -0777 -pe 's/```mermaid.*?```/![Integration Architecture](architecture.png)/sg' <<< "$GENERATED_TEXT")
               fi
 
-              # Building the Document using cat to avoid Shell syntax errors
-              echo -e "$LOGO_HEADER" > final.md
-              echo -e "\n\n# <p align='center'><span style='color: ${{ env.HEADING_COLOR }}'>$IFLOW_ROOT_NAME</span></p>\n" >> final.md
-              echo -e "### <p align='center'>Technical Specification Document</p>\n\n" >> final.md
-              echo -e "| | |\n|:---|:---|\n| **Author** | $AUTHOR |\n| **Date** | $DATE |\n| **Version** | $IFLOW_VERSION |\n\n\pagebreak\n" >> final.md
-              
-              # Append body and replace markers safely
-              # We use '@' as a delimiter for sed because the content contains '|' and '/'
-              echo -e "$LOGO_HEADER" >> final.md
-              echo "$GENERATED_TEXT" | \
-              sed "s|---TOC-END-PAGE-BREAK---|\\pagebreak\n\n$LOGO_HEADER|g" | \
-              sed "s|<h1|$LOGO_HEADER\n<h1|g" >> final.md
+              # 2. Python Script to Assemble Document (Safest way to handle logos on every page)
+              cat <<EOF > assemble.py
+          import os, re
 
+          heading_color = "${{ env.HEADING_COLOR }}"
+          iflow_name = "$IFLOW_ROOT_NAME"
+          author = "$AUTHOR"
+          date = "$DATE"
+          version = "$IFLOW_VERSION"
+          content = """$GENERATED_TEXT"""
+
+          sap_logo = "https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/sap_logo.png"
+          mm_logo = "https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/motiveminds_logo.png"
+
+          header = f"| ![]({sap_logo}){{width=100px}} | | <p align='right'>![]({mm_logo}){{width=130px}}</p> |\n|:---|:---:|---:|\n\n"
+
+          # Replace mermaid with image
+          if os.path.exists("architecture.png"):
+              content = re.sub(r"\`\`\`mermaid.*?\`\`\`", "![Integration Architecture](architecture.png)", content, flags=re.DOTALL)
+
+          # Add logos before every H1
+          content = content.replace("<h1", f"{header}\n<h1")
+
+          # Handle TOC transition
+          content = content.replace("---TOC-END-PAGE-BREAK---", f"\n\pagebreak\n\n{header}\n")
+
+          # Build Cover Page
+          cover = f"{header}\n\n<br><br>\n\n# <center><span style='color: {heading_color}'>{iflow_name}</span></center>\n\n### <center>Technical Specification Document</center>\n\n<br><br>\n\n| | |\n|:---|:---|\n| **Author** | {author} |\n| **Date** | {date} |\n| **Version** | {version} |\n\n\pagebreak\n"
+
+          with open("final.md", "w") as f:
+              f.write(cover + header + content)
+          EOF
+
+              python3 assemble.py
               pandoc final.md -o "$OUTPUT_DOCX"
               
-              rm -f final.md architecture.mmd architecture.png puppeteer_config.json "$QUERY_FILE" "$PAYLOAD_FILE"
+              rm -f final.md architecture.mmd architecture.png puppeteer_config.json payload.json query_context.txt assemble.py
               ALL_DOCS_GENERATED=true
             fi
           done < <(find "$BASE_PKG_DIR" -type f \( -name 'iFlowContent.xml' -o -name '*.iflw' \) -printf '%h\n' | sort -u)
@@ -130,7 +144,7 @@ jobs:
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git add "cpi-artifacts/${{ github.event.inputs.package_id }}/**/*.docx"
-          git commit -m "🤖 DOCS: Logos on every page and fixed formatting"
+          git commit -m "🤖 DOCS: Robust logo header & layout for ${{ github.event.inputs.package_id }}"
           git push
 
 
