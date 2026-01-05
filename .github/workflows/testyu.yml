@@ -1,4 +1,4 @@
-name: 🤖 Generation Individual iFlow Documentation (Final Layout Fix)
+name: 🤖 Generation Individual iFlow Documentation (Final Layout Alignment)
 
 on:
   workflow_dispatch:
@@ -66,39 +66,20 @@ jobs:
           4. Error Handling and Logging <br>
           5. Testing Validation <br>
           6. Reference Documents <br>
-          ---TOC-END-PAGE-BREAK---
-          <h1 style=\"color: ${{ env.HEADING_COLOR }}; text-align: left; clear: both;\">1. Introduction</h1>
-          <b style=\"color: ${{ env.HEADING_COLOR }};\">1.1 Purpose:</b>
-          [Generate detailed, technical business logic explanation]
-          <b style=\"color: ${{ env.HEADING_COLOR }};\">1.2 Scope:</b>
-          [Generate detailed technical boundaries and requirements]
-          <h1 style=\"color: ${{ env.HEADING_COLOR }}; text-align: left; clear: both;\">2. Integration Overview</h1>
-          <b style=\"color: ${{ env.HEADING_COLOR }};\">2.1 Integration Architecture:</b> (Mermaid graph)
-          <b style=\"color: ${{ env.HEADING_COLOR }};\">2.2 Integration Components:</b>
-          | Component | Role | Details |
-          <h1 style=\"color: ${{ env.HEADING_COLOR }}; text-align: left; clear: both;\">3. Integration Scenarios</h1>
-          <b style=\"color: ${{ env.HEADING_COLOR }};\">3.1 Scenario Description:</b>
-          <b style=\"color: ${{ env.HEADING_COLOR }};\">3.2 Data Flows:</b>
-          <b style=\"color: ${{ env.HEADING_COLOR }};\">3.3 Security Requirements:</b>
-          <h1 style=\"color: ${{ env.HEADING_COLOR }}; text-align: left; clear: both;\">4. Error Handling and Logging</h1>
-          <h1 style=\"color: ${{ env.HEADING_COLOR }}; text-align: left; clear: both;\">5. Testing Validation</h1>
-          **Testing Details – Sheet: Testing**
-          | Test Case ID | Scenario | Expected Outcome |
-          | :--- | :--- | :--- |
-          <h1 style=\"color: ${{ env.HEADING_COLOR }}; text-align: left; clear: both;\">6. Reference Documents</h1>"
+          ---TOC-END-PAGE-BREAK---"
 
           ALL_DOCS_GENERATED=false
           while IFS= read -r IFLOW_DIR; do
             IFLOW_ROOT_NAME=$(echo "$IFLOW_DIR" | sed "s|^$BASE_PKG_DIR/||" | cut -d/ -f1)
             FINAL_IFLOW_DIR="$BASE_PKG_DIR/$IFLOW_ROOT_NAME"
             OUTPUT_DOCX="$FINAL_IFLOW_DIR/${IFLOW_ROOT_NAME}_Technical_Specification.docx"
-            TEMP_MD="final_doc.md"
+            TEMP_MD="aligned_content.md"
             
             EXTRACTED_VERSION=$(grep -rPho '(?<=<Version>)[^<]+' "$IFLOW_DIR" | head -n 1)
             IFLOW_VERSION=${EXTRACTED_VERSION:-"1.0.0"}
 
             QUERY_FILE="user_query.tmp"
-            find "$IFLOW_DIR" -type f \( -name 'iFlowContent.xml' -o -name '*.groovy' -o -name '*.xslt' -o -name '*.iflw' \) -exec cat {} + > "$QUERY_FILE"
+            find "$IFLOW_DIR" -type f \( -name 'iFlowContent.xml' -o -name '*.iflw' \) -exec cat {} + > "$QUERY_FILE"
 
             PAYLOAD_FILE="payload.json"
             jq -n --arg system "$SYSTEM_PROMPT" --rawfile query "$QUERY_FILE" --arg model "$MODEL_NAME" \
@@ -108,7 +89,7 @@ jobs:
             GENERATED_TEXT=$(echo "$API_RESPONSE" | jq -r ".choices[0].message.content // empty")
             
             if [ -n "$GENERATED_TEXT" ]; then
-              # Rendering Architecture Diagram
+              # Render Mermaid
               echo "$GENERATED_TEXT" | sed -n '/```mermaid/,/```/p' | sed 's/```mermaid//g; s/```//g' > architecture.mmd
               if [ -s architecture.mmd ]; then
                 echo '{"args": ["--no-sandbox", "--disable-setuid-sandbox"]}' > puppeteer_config.json
@@ -121,20 +102,34 @@ jobs:
               SAP_LOGO="https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/sap_logo.png"
               MM_LOGO="https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/motiveminds_logo.png"
               
-              # Unified Header Layout for logos
-              LOGO_HTML="<div style='display:flex; justify-content:space-between; margin-bottom:20px;'><img src='$SAP_LOGO' width='120'/><img src='$MM_LOGO' width='150'/></div>"
+              # Standard Markdown-based Cover Page (Fixes Screenshot 1 issue)
+              COVER_PAGE="<div style='text-align: center;'>
+              <h1 style='color: ${{ env.HEADING_COLOR }}; font-size: 36pt;'>$IFLOW_ROOT_NAME</h1>
+              <h2 style='font-weight: normal;'>Technical Specification Document</h2>
+              <br><br>
+              </div>
 
-              # PAGE 1: COVER (Using Markdown for reliable Word rendering)
-              COVER_PAGE="$LOGO_HTML\n\n# <span style='color:${{ env.HEADING_COLOR }}'>$IFLOW_ROOT_NAME</span>\n\n### Technical Specification Document\n\n| | |\n| :--- | :--- |\n| **Author** | $AUTHOR |\n| **Date** | $DATE |\n| **Version** | $IFLOW_VERSION |\n\n\\pagebreak"
+              | | |
+              |:---|:---|
+              | **Author** | $AUTHOR |
+              | **Date** | $DATE |
+              | **Version** | $IFLOW_VERSION |
 
-              # PAGE 2: Table of Contents & Generated Content
-              # Replacing your TOC break marker with a physical page break + logos
-              PAGE_BREAK_AND_LOGO="\\pagebreak\n\n$LOGO_HTML\n\n"
-              PROCESSED_CONTENT=$(echo -e "$GENERATED_TEXT" | sed "s|---TOC-END-PAGE-BREAK---|$(echo "$PAGE_BREAK_AND_LOGO" | sed 's/[&/]/\\&/g')|g")
+              \pagebreak"
+
+              # Format Logo Header for internal pages
+              LOGO_HEADER="<div style='display: flex; justify-content: space-between;'>
+                <img src='$SAP_LOGO' width='120' />
+                <img src='$MM_LOGO' width='150' />
+              </div>"
+
+              # Insert Logo Header and Page Break after TOC
+              PAGE_TRANSITION="\pagebreak\n\n$LOGO_HEADER\n\n"
+              PROCESSED_CONTENT=$(echo -e "$GENERATED_TEXT" | sed "s|---TOC-END-PAGE-BREAK---|$(echo "$PAGE_TRANSITION" | sed 's/[&/]/\\&/g')|g")
+
+              # Assemble Final Markdown
+              echo -e "$LOGO_HEADER\n\n$COVER_PAGE\n\n$LOGO_HEADER\n\n$PROCESSED_CONTENT" > "$TEMP_MD"
               
-              echo -e "$COVER_PAGE\n\n$LOGO_HTML\n\n$PROCESSED_CONTENT" > "$TEMP_MD"
-              
-              # Final Conversion
               pandoc "$TEMP_MD" -o "$OUTPUT_DOCX"
               
               rm -f "$TEMP_MD" architecture.mmd architecture.png puppeteer_config.json
@@ -151,7 +146,7 @@ jobs:
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git add "cpi-artifacts/${{ github.event.inputs.package_id }}/**/*.docx"
-          git commit -m "🤖 DOCS: Fixed Cover Page Layout and TOC rendering"
+          git commit -m "🤖 DOCS: Fixed Cover Page and TOC Page Breaks"
           git push
 
 
