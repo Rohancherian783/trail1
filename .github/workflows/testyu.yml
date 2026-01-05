@@ -1,4 +1,4 @@
-name: 🤖 Generation Individual iFlow Documentation (Word with Diagrams)
+name: 🤖 Generation Individual iFlow Documentation (Final Layout Fix)
 
 on:
   workflow_dispatch:
@@ -20,7 +20,6 @@ jobs:
       - name: Install Dependencies
         run: |
           sudo apt-get update
-          # Updated for Ubuntu 24.04 (Noble) compatibility
           sudo apt-get install -y jq pandoc libgbm1 libasound2t64 libnss3 libxss1 libatk-bridge2.0-0 libgtk-3-0
           npm install -g @mermaid-js/mermaid-cli
 
@@ -31,17 +30,11 @@ jobs:
           PKG_ID: ${{ github.event.inputs.package_id }}
           HEADING_COLOR: "#1f4e79"
         run: |
-          # --- Configuration ---
           API_URL="https://api.openai.com/v1/chat/completions"
           MODEL_NAME="gpt-4o-mini"
           BASE_PKG_DIR="cpi-artifacts/$PKG_ID"
-          
-          if [ ! -d "$BASE_PKG_DIR" ]; then
-            echo "::error::Package directory not found"
-            exit 1
-          fi
 
-          # --- SYSTEM PROMPT (EXACTLY AS PER YOUR REFERENCE) ---
+          # --- SYSTEM PROMPT (EXACTLY FROM REFERENCE) ---
           SYSTEM_PROMPT="You are a senior SAP CPI Technical Architect. Your goal is to produce a high-quality, comprehensive Technical Specification Document.
           
           **CRITICAL CONTENT REQUIREMENTS:**
@@ -99,14 +92,13 @@ jobs:
             IFLOW_ROOT_NAME=$(echo "$IFLOW_DIR" | sed "s|^$BASE_PKG_DIR/||" | cut -d/ -f1)
             FINAL_IFLOW_DIR="$BASE_PKG_DIR/$IFLOW_ROOT_NAME"
             OUTPUT_DOCX="$FINAL_IFLOW_DIR/${IFLOW_ROOT_NAME}_Technical_Specification.docx"
-            TEMP_MD="word_content.md"
+            TEMP_MD="final_doc.md"
             
             EXTRACTED_VERSION=$(grep -rPho '(?<=<Version>)[^<]+' "$IFLOW_DIR" | head -n 1)
             IFLOW_VERSION=${EXTRACTED_VERSION:-"1.0.0"}
 
             QUERY_FILE="user_query.tmp"
-            echo -e "Generate report for iFlow '$IFLOW_ROOT_NAME'.\n" > "$QUERY_FILE"
-            find "$IFLOW_DIR" -type f \( -name 'iFlowContent.xml' -o -name '*.groovy' -o -name '*.xslt' -o -name '*.iflw' \) -exec cat {} + >> "$QUERY_FILE"
+            find "$IFLOW_DIR" -type f \( -name 'iFlowContent.xml' -o -name '*.groovy' -o -name '*.xslt' -o -name '*.iflw' \) -exec cat {} + > "$QUERY_FILE"
 
             PAYLOAD_FILE="payload.json"
             jq -n --arg system "$SYSTEM_PROMPT" --rawfile query "$QUERY_FILE" --arg model "$MODEL_NAME" \
@@ -116,11 +108,11 @@ jobs:
             GENERATED_TEXT=$(echo "$API_RESPONSE" | jq -r ".choices[0].message.content // empty")
             
             if [ -n "$GENERATED_TEXT" ]; then
-              # --- MERMAID TO IMAGE RENDERING ---
+              # Rendering Architecture Diagram
               echo "$GENERATED_TEXT" | sed -n '/```mermaid/,/```/p' | sed 's/```mermaid//g; s/```//g' > architecture.mmd
               if [ -s architecture.mmd ]; then
                 echo '{"args": ["--no-sandbox", "--disable-setuid-sandbox"]}' > puppeteer_config.json
-                mmdc -p puppeteer_config.json -i architecture.mmd -o architecture.png -b transparent -w 1200
+                mmdc -p puppeteer_config.json -i architecture.mmd -o architecture.png -b transparent
                 GENERATED_TEXT=$(echo "$GENERATED_TEXT" | sed '/```mermaid/,/```/c\![Integration Architecture](architecture.png)')
               fi
 
@@ -129,32 +121,20 @@ jobs:
               SAP_LOGO="https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/sap_logo.png"
               MM_LOGO="https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/motiveminds_logo.png"
               
-              LOGO_HEADER="<div style='width:100%; height: 60px; margin-bottom: 20px;'><div style='float: left;'><img src='$SAP_LOGO' width='120'/></div><div style='float: right;'><img src='$MM_LOGO' width='150'/></div><div style='clear: both;'></div></div>"
-              
-              # Boxed Cover Page
-              COVER_PAGE="<div style='border: 5px double ${{ env.HEADING_COLOR }}; padding: 40px; text-align: center;'>
-                            <h1 style='color: ${{ env.HEADING_COLOR }}; font-size: 32pt;'>$IFLOW_ROOT_NAME</h1>
-                            <p style='font-size: 18pt;'>Technical Specification Document</p>
-                            <br><br>
-                            <table style='width: 80%; margin: 0 auto; border: 1px solid black;'>
-                              <tr><td><b>Author</b></td><td>$AUTHOR</td></tr>
-                              <tr><td><b>Date</b></td><td>$DATE</td></tr>
-                              <tr><td><b>Version</b></td><td>$IFLOW_VERSION</td></tr>
-                            </table>
-                          </div>"
+              # Unified Header Layout for logos
+              LOGO_HTML="<div style='display:flex; justify-content:space-between; margin-bottom:20px;'><img src='$SAP_LOGO' width='120'/><img src='$MM_LOGO' width='150'/></div>"
 
-              PAGE_BREAK="<div style='page-break-after: always;'></div>"
-              SECTION_BREAK="${PAGE_BREAK}\n${LOGO_HEADER}\n"
+              # PAGE 1: COVER (Using Markdown for reliable Word rendering)
+              COVER_PAGE="$LOGO_HTML\n\n# <span style='color:${{ env.HEADING_COLOR }}'>$IFLOW_ROOT_NAME</span>\n\n### Technical Specification Document\n\n| | |\n| :--- | :--- |\n| **Author** | $AUTHOR |\n| **Date** | $DATE |\n| **Version** | $IFLOW_VERSION |\n\n\\pagebreak"
+
+              # PAGE 2: Table of Contents & Generated Content
+              # Replacing your TOC break marker with a physical page break + logos
+              PAGE_BREAK_AND_LOGO="\\pagebreak\n\n$LOGO_HTML\n\n"
+              PROCESSED_CONTENT=$(echo -e "$GENERATED_TEXT" | sed "s|---TOC-END-PAGE-BREAK---|$(echo "$PAGE_BREAK_AND_LOGO" | sed 's/[&/]/\\&/g')|g")
               
-              # Final Markdown Construction
-              FINAL_MD="${LOGO_HEADER}\n${COVER_PAGE}\n${PAGE_BREAK}\n${LOGO_HEADER}\n"
-              # Inject logos into the AI generated content by replacing the custom TOC break
-              PROCESSED_CONTENT=$(echo -e "$GENERATED_TEXT" | sed "s|---TOC-END-PAGE-BREAK---|$(echo "$SECTION_BREAK" | sed 's/[&/]/\\&/g')|g")
-              FINAL_MD="${FINAL_MD}${PROCESSED_CONTENT}"
+              echo -e "$COVER_PAGE\n\n$LOGO_HTML\n\n$PROCESSED_CONTENT" > "$TEMP_MD"
               
-              echo -e "$FINAL_MD" > "$TEMP_MD"
-              
-              # Convert to Word
+              # Final Conversion
               pandoc "$TEMP_MD" -o "$OUTPUT_DOCX"
               
               rm -f "$TEMP_MD" architecture.mmd architecture.png puppeteer_config.json
@@ -171,7 +151,7 @@ jobs:
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git add "cpi-artifacts/${{ github.event.inputs.package_id }}/**/*.docx"
-          git commit -m "🤖 DOCS: Word doc with exact TOC and prompts restored"
+          git commit -m "🤖 DOCS: Fixed Cover Page Layout and TOC rendering"
           git push
 
 
