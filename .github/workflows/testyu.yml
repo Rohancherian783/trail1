@@ -16,10 +16,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install Dependencies (jq only)
+      - name: Install Dependencies (jq and curl)
         run: |
           sudo apt-get update
-          sudo apt-get install -y jq
+          sudo apt-get install -y jq curl
 
       - name: Generate Individual iFlow Documentation via OpenAI API
         id: documentation_step
@@ -32,6 +32,12 @@ jobs:
           API_URL="https://api.openai.com/v1/chat/completions"
           MODEL_NAME="gpt-4o-mini"
           BASE_PKG_DIR="cpi-artifacts/$PKG_ID"
+
+          # 1. Convert Logos to Base64 (Ensures printing on every page)
+          curl -s https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/sap_logo.png -o sap.png
+          curl -s https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/motiveminds_logo.png -o mm.png
+          SAP_B64="data:image/png;base64,$(base64 -w 0 sap.png)"
+          MM_B64="data:image/png;base64,$(base64 -w 0 mm.png)"
 
           if [ ! -d "$BASE_PKG_DIR" ]; then
             echo "::error::Package directory not found at: $BASE_PKG_DIR"
@@ -85,17 +91,11 @@ jobs:
           | Test Case ID | Scenario | Expected Outcome |
           <h1 style=\"color: ${{ env.HEADING_COLOR }}; text-align: left; clear: both;\">6. Reference Documents</h1>"
 
-          ALL_DOCS_GENERATED=false
           while IFS= read -r IFLOW_DIR; do
             IFLOW_ROOT_NAME=$(echo "$IFLOW_DIR" | sed "s|^$BASE_PKG_DIR/||" | cut -d/ -f1)
-            FINAL_IFLOW_DIR="$BASE_PKG_DIR/$IFLOW_ROOT_NAME"
-            OUTPUT_FILE="$FINAL_IFLOW_DIR/${IFLOW_ROOT_NAME}_Summary.md"
-            
-            EXTRACTED_VERSION=$(grep -rPho '(?<=<Version>)[^<]+' "$IFLOW_DIR" | head -n 1)
-            IFLOW_VERSION=${EXTRACTED_VERSION:-"1.0.0"}
+            OUTPUT_FILE="$BASE_PKG_DIR/$IFLOW_ROOT_NAME/${IFLOW_ROOT_NAME}_Summary.md"
             
             QUERY_FILE="user_query.tmp"
-            echo -e "Generate a comprehensive technical report for iFlow '$IFLOW_ROOT_NAME'.\n" > "$QUERY_FILE"
             find "$IFLOW_DIR" -type f \( -name 'iFlowContent.xml' -o -name '*.groovy' -o -name '*.xslt' -o -name '*.iflw' \) -exec cat {} + >> "$QUERY_FILE"
 
             jq -n --arg system "$SYSTEM_PROMPT" --rawfile query "$QUERY_FILE" --arg model "$MODEL_NAME" \
@@ -104,58 +104,51 @@ jobs:
             API_RESPONSE=$(curl -s -X POST "$API_URL" -H "Content-Type: application/json" -H "Authorization: Bearer $OPENAI_API_KEY" -d @payload.json)
             GENERATED_TEXT=$(echo "$API_RESPONSE" | jq -r ".choices[0].message.content // empty")
 
-            if [ -n "$GENERATED_TEXT" ] && [ "$GENERATED_TEXT" != "null" ]; then
+            if [ -n "$GENERATED_TEXT" ]; then
               AUTHOR=$(git log -1 --pretty=format:'%an')
               DATE=$(date +'%Y-%m-%d')
               CLEAN_NAME=$(echo "$IFLOW_ROOT_NAME" | sed 's/_/ /g')
-              SAP_LOGO="https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/sap_logo.png"
-              MM_LOGO="https://raw.githubusercontent.com/Rohancherian783/trail1/main/assets/motiveminds_logo.png"
 
-              # --- PDF FRONT MATTER (Handles logos on EVERY page) ---
+              # FRONT MATTER (Tells Markdown PDF extension to repeat logos on every page)
               FRONT_MATTER="---
           pdf_options:
             format: A4
-            margin:
-              top: 1.2in
-              bottom: 0.8in
-              left: 0.5in
-              right: 0.5in
+            margin: { top: 1.2in, bottom: 0.8in, left: 0.5in, right: 0.5in }
             displayHeaderFooter: true
             headerTemplate: |
               <div style=\"width: 100%; margin: 0 0.5in; display: flex; justify-content: space-between; align-items: center; font-size: 10px; border-bottom: 1px solid #ddd; padding-bottom: 5px;\">
-                <img src=\"$SAP_LOGO\" style=\"height: 25px;\">
+                <img src=\"$SAP_B64\" style=\"height: 25px;\">
                 <span style=\"color: #1f4e79; font-weight: bold;\">$CLEAN_NAME - Technical Specification</span>
-                <img src=\"$MM_LOGO\" style=\"height: 25px;\">
+                <img src=\"$MM_B64\" style=\"height: 25px;\">
               </div>
             footerTemplate: |
-              <div style=\"width: 100%; margin: 0 0.5in; display: flex; justify-content: space-between; font-size: 10px; color: #555;\">
-                <span>$DATE</span>
+              <div style=\"width: 100%; margin: 0 0.5in; display: flex; justify-content: space-between; font-size: 10px;\">
+                <span>Generated: $DATE</span>
                 <span>Page <span class=\"pageNumber\"></span> of <span class=\"totalPages\"></span></span>
               </div>
           ---"
 
-              GLOBAL_STYLE="<style>h1, h2 { text-align: left !important; } table { width: 100% !important; border-collapse: collapse !important; border: 1px solid #000 !important; margin-bottom: 20px; } th, td { border: 1px solid #000 !important; padding: 10px !important; text-align: left; } th { background-color: #f2f2f2; font-weight: bold; }</style>"
+              GLOBAL_STYLE="<style>h1, h2 { text-align: left !important; } table { width: 100%; border-collapse: collapse; border: 1px solid black; } th, td { border: 1px solid black; padding: 10px; } th { background-color: #f2f2f2; }</style>"
               
               COVER_PAGE="<div style=\"text-align: center; padding-top: 100px;\">
+          <div style=\"display: flex; justify-content: space-between; margin-bottom: 80px;\">
+             <img src=\"$SAP_B64\" style=\"height: 50px;\">
+             <img src=\"$MM_B64\" style=\"height: 50px;\">
+          </div>
           <h1 style=\"color: ${{ env.HEADING_COLOR }}; font-size: 3.5em; text-align: center !important;\">$CLEAN_NAME</h1>
-          <h2 style=\"font-size: 1.8em; font-weight: normal; text-align: center !important;\">Technical Specification Document</h2>
-          <div style=\"height: 100px;\"></div>
+          <h2 style=\"text-align: center !important;\">Technical Specification Document</h2>
+          <div style=\"height: 120px;\"></div>
           <table style=\"width: 60%; margin: 0 auto; text-align: left;\">
             <tr><th>Author</th><td>$AUTHOR</td></tr>
             <tr><th>Date</th><td>$DATE</td></tr>
-            <tr><th>Version</th><td>$IFLOW_VERSION</td></tr>
           </table>
           </div>"
 
-              # Format logic
               SECTION_BREAK="<div style=\"page-break-after: always;\"></div>"
               GENERATED_TEXT_CLEANED=$(echo -e "$GENERATED_TEXT" | sed -E '1s/^\s*```(markdown|text)?//' | sed -E '$s/\s*```\s*$//')
               
-              # Construct Final Document
-              FINAL_DOC="${FRONT_MATTER}\n${GLOBAL_STYLE}\n${COVER_PAGE}\n${SECTION_BREAK}\n${GENERATED_TEXT_CLEANED}"
-              
-              # Handle TOC Page Break
-              FINAL_DOC=$(echo -e "$FINAL_DOC" | sed "s|---TOC-END-PAGE-BREAK---|$SECTION_BREAK|g")
+              # Construct Final Doc and handle the TOC page break
+              FINAL_DOC="${FRONT_MATTER}\n${GLOBAL_STYLE}\n${COVER_PAGE}\n${SECTION_BREAK}\n$(echo -e "$GENERATED_TEXT_CLEANED" | sed "s|---TOC-END-PAGE-BREAK---|$SECTION_BREAK|g")"
 
               echo -e "$FINAL_DOC" > "$OUTPUT_FILE"
               ALL_DOCS_GENERATED=true
@@ -165,14 +158,13 @@ jobs:
 
           echo "docs_generated=$ALL_DOCS_GENERATED" >> $GITHUB_OUTPUT
 
-      - name: Commit and Push Documentation
+      - name: Commit and Push
         if: steps.documentation_step.outputs.docs_generated == 'true'
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
-          PKG_ID="${{ github.event.inputs.package_id }}"
-          git add "cpi-artifacts/$PKG_ID/**/*_Summary.md"
-          git commit -m "🤖 DOCS: Logos on all pages via Front Matter and restored original prompts"
+          git add "cpi-artifacts/${{ github.event.inputs.package_id }}/**/*_Summary.md"
+          git commit -m "🤖 DOCS: Logos on all pages via Base64 & restored original requirements"
           git push
 
 
